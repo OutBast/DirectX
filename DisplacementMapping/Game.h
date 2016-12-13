@@ -110,11 +110,12 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11Buffer>			m_indexBuffer;
 
 	// Shader resources
-	enum ConstanBuffer
+	enum ConstantBuffer
 	{
 		CB_Appliation,
 		CB_Frame,
 		CB_Object,
+		CB_TessellationFactor,
 		NumConstantBuffers
 	};
 
@@ -172,4 +173,6 @@ private:
 	int                                             m_selectFile;
 	int                                             m_firstFile;
 	std::vector<std::wstring>                       m_fileNames;
+
+	float											m_tessellationFactor;
 };

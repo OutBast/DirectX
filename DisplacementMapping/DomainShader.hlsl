@@ -1,24 +1,5 @@
-struct DS_OUTPUT
-{
-	float4 vPosition  : SV_POSITION;
-	// TODO: change/add other stuff
-};
+#include "Header.hlsli"
 
-// Output control point
-struct HS_CONTROL_POINT_OUTPUT
-{
-	float3 vPosition : WORLDPOS; 
-};
-
-// Output patch constant data.
-struct HS_CONSTANT_DATA_OUTPUT
-{
-	float EdgeTessFactor[3]			: SV_TessFactor; // e.g. would be [4] for a quad domain
-	float InsideTessFactor			: SV_InsideTessFactor; // e.g. would be Inside[2] for a quad domain
-	// TODO: change/add other stuff
-};
-
-#define NUM_CONTROL_POINTS 3
 
 [domain("tri")]
 DS_OUTPUT main(
@@ -28,8 +9,18 @@ DS_OUTPUT main(
 {
 	DS_OUTPUT Output;
 
-	Output.vPosition = float4(
-		patch[0].vPosition*domain.x+patch[1].vPosition*domain.y+patch[2].vPosition*domain.z,1);
+	//Output.position = float4(
+	//	patch[0].position*domain.x+patch[1].position*domain.y+patch[2].position*domain.z,1);
+
+	Output.position = 
+		domain.x * patch[0].position +
+		domain.y * patch[1].position +
+		domain.z * patch[2].position;
+
+	Output.color =
+		domain.x * patch[0].color +
+		domain.y * patch[1].color +
+		domain.z * patch[2].color;
 
 	return Output;
 }

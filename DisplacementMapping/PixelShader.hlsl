@@ -1,16 +1,7 @@
-//#include "Header.hlsli"
-//
-//float4 main() : SV_TARGET
-//{
-//	return AmbientColor * AmbientIntensity;
-//}
-
-struct PixelShaderInput
-{
-	float4 color : COLOR;
-};
+#include "Header.hlsli"
 
 float4 main(PixelShaderInput IN) : SV_TARGET
 {
-	return IN.color;
+	return float4(1, 1, 1, 1);
+	//return IN.color;
 }

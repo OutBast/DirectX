@@ -23,6 +23,9 @@ namespace
 #endif
 }
 
+#define MAX_TESS_FACTOR 63.0f
+#define MIN_TESS_FACTOR 1.0f
+#define TESS_STEP 0.1f;
 
 // Vertex data for a colored cube.
 struct VertexPosColor
@@ -30,6 +33,8 @@ struct VertexPosColor
 	XMFLOAT3 Position;
 	XMFLOAT3 Color;
 };
+
+XMFLOAT4 shaderFactors;
 
 // Constructor.
 Game::Game() :
@@ -53,7 +58,8 @@ Game::Game() :
 	m_displacementMap(false),
 	m_backFaceCulling(false),
 	m_selectFile(0),
-	m_firstFile(0)
+	m_firstFile(0),
+	m_tessellationFactor(1.0f)
 {
 #ifdef GAMMA_CORRECT_RENDERING
 	m_deviceResources = std::make_unique<DX::DeviceResources>(DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
@@ -71,6 +77,8 @@ Game::Game() :
 	*m_szModelName = 0;
 	*m_szStatus = 0;
 	*m_szError = 0;
+
+	shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
 }
 
 // Initialize the Direct3D resources required to run.
@@ -113,6 +121,8 @@ void Game::Tick()
 // Updates the world
 void Game::Update(DX::StepTimer const& timer)
 {
+	auto context = m_deviceResources->GetD3DDeviceContext();
+
 	if (m_reloadModel)
 		LoadModel();
 
@@ -342,7 +352,38 @@ void Game::Update(DX::StepTimer const& timer)
 
 			RotateView(q);
 		}
+
+		///////////////////////////
 		
+		if (kb.P)
+		{
+			if (m_tessellationFactor < MAX_TESS_FACTOR)
+			{
+				m_tessellationFactor += TESS_STEP;
+			} 
+			else
+			{
+				m_tessellationFactor = MAX_TESS_FACTOR;
+			}
+		}
+
+
+		if (kb.L)
+		{
+			if (m_tessellationFactor > MIN_TESS_FACTOR)
+			{
+				m_tessellationFactor -= TESS_STEP;
+			}
+			else
+			{
+				m_tessellationFactor = MIN_TESS_FACTOR;
+			}
+		}
+
+		shaderFactors = XMFLOAT4(m_tessellationFactor, 0.0f, 0.0f, 0.0f);
+		context->UpdateSubresource(m_constantBuffers[CB_TessellationFactor], 0, nullptr, &shaderFactors, 0, 0);
+
+		///////////////////////
 		Matrix im;
 		m_view.Invert(im);
 		move = Vector3::TransformNormal(move, im);
@@ -388,7 +429,7 @@ void Game::Update(DX::StepTimer const& timer)
 		}
 
 		m_keyboardTracker.Update(kb);
-
+		
 		if (m_keyboardTracker.pressed.J)
 			m_showCross = !m_showCross;
 
@@ -512,9 +553,7 @@ void Game::Update(DX::StepTimer const& timer)
 	}
 
 	m_world = Matrix::CreateFromQuaternion(m_modelRot);
-
-
-	auto context = m_deviceResources->GetD3DDeviceContext();
+	
 	context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view, 0, 0);
 	context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
 
@@ -593,119 +632,152 @@ void Game::Render()
 #if 0
 			m_model->Draw(context, *, m_world, m_view, m_proj, m_wireframe);
 #else
-
+/*
 			const UINT vertexStride = sizeof(VertexPosColor);
-			const UINT offset = 0;
+			const UINT offset = 0;*/
 
-			// Draw opaque parts
-			for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
+
+			if (m_tessellation)
 			{
-				auto mesh = it->get();
-				assert(mesh != 0);
-
-				//mesh->PrepareForRendering(context, *m_states, false, m_wireframe);
-
-				// Set Rasterizer State
-				if (m_wireframe)
-					context->RSSetState(m_states->Wireframe());
-				else
-					context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
-
-				for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
+				// Draw opaque parts
+				for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
 				{
-					auto part = pit->get();
+					auto mesh = it->get();
+					assert(mesh != 0);
 
+					//mesh->PrepareForRendering(context, *m_states, false, m_wireframe);
 
-					auto vb = part->vertexBuffer.Get();
-					UINT vbStride = part->vertexStride;
-					UINT vbOffset = 0;
-
-
-					//context->IASetInputLayout(part->inputLayout.Get());
-					context->IASetInputLayout(m_vertexInputLayout.Get());
-
-					context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
-					//context->IASetVertexBuffers(0, 1, &g_d3dVertexBuffer, &vertexStride, &offset);
-					context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
-					//context->IASetIndexBuffer(g_d3dIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
-					context->IASetPrimitiveTopology(part->primitiveType);
-					//context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-					context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-					context->VSSetConstantBuffers(0, 3, m_constantBuffers);
-
-					//context->RSSetState(g_d3dRasterizerState);
-
+					// Set Rasterizer State
 					if (m_wireframe)
 						context->RSSetState(m_states->Wireframe());
 					else
 						context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
 
-					auto viewport = m_deviceResources->GetScreenViewport();
-					context->RSSetViewports(1, &viewport);
-					
-					context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 
-
-					auto renderTarget = m_deviceResources->GetRenderTargetView();
-					auto depthStencil = m_deviceResources->GetDepthStencilView();
-					context->OMSetRenderTargets(1, &renderTarget, depthStencil);
-					//context->OMSetRenderTargets(1, &g_d3dRenderTargetView, g_d3dDepthStencilView);
-
-					context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
-					//context->OMSetDepthStencilState(g_d3dDepthStencilState, 1);
-
-
-					context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
-					//context->DrawIndexed(_countof(g_Indicies), 0, 0);
-
-
-
-
-
-
-					/*if (part->isAlpha)
-						continue;
-
-					auto imatrices = dynamic_cast<IEffectMatrices*>(part->effect.get());
-					if (imatrices)
+					for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
 					{
-						imatrices->SetWorld(m_world);
-						imatrices->SetView(m_view);
-						imatrices->SetProjection(m_proj);
-					}*/
-
-					//part->Draw(context, part->effect.get(), part->inputLayout.Get() );
-				
-					//context->IASetInputLayout(part->inputLayout.Get());
-
-					//auto vb = part->vertexBuffer.Get();
-					//UINT vbStride = part->vertexStride;
-					//UINT vbOffset = 0;
-					//context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
-
-					//// Note that if indexFormat is DXGI_FORMAT_R32_UINT, this model mesh part requires a Feature Level 9.2 or greater device
-					//context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+						auto part = pit->get();
 
 
-					//// Draw the primitive.
-					//context->IASetPrimitiveTopology(part->primitiveType);
+						auto vb = part->vertexBuffer.Get();
+						UINT vbStride = part->vertexStride;
+						UINT vbOffset = 0;
 
-					//context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+
+						//context->IASetInputLayout(part->inputLayout.Get());
+						context->IASetInputLayout(m_vertexInputLayout.Get());
+
+						context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
+						//context->IASetVertexBuffers(0, 1, &g_d3dVertexBuffer, &vertexStride, &offset);
+						context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+						//context->IASetIndexBuffer(g_d3dIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+
+						//context->IASetPrimitiveTopology(part->primitiveType);
+						//context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+
+						context->VSSetConstantBuffers(0, 4, m_constantBuffers);
+						context->HSSetConstantBuffers(0, 4, m_constantBuffers);
+						context->DSSetConstantBuffers(0, 4, m_constantBuffers);
+						context->PSSetConstantBuffers(0, 4, m_constantBuffers);
 
 
-					//context->IASetInputLayout(part->inputLayout.Get());
-					//context->IASetVertexBuffers(0, 1, part->vertexBuffer.Get(), (UINT)part->vertexStride, (UINT)part->vertexOffset);
-					//context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+						context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
 
-					//context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-					//context->HSSetShader(m_hullShader.Get(), NULL, 0);
-					//context->DSSetShader(m_domainShader.Get(), NULL, 0);
-					//context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+						context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+						//context->HSSetShader(nullptr, nullptr, 0);
+						context->DSSetShader(m_domainShader.Get(), nullptr, 0);
+						//context->DSSetShader(nullptr, nullptr, 0);
+						context->GSSetShader(nullptr, nullptr, 0);
 
-					//context->DrawIndexed(part->indexCount, part->startIndex, 0);
+						//context->RSSetState(g_d3dRasterizerState);
+
+						if (m_wireframe)
+							context->RSSetState(m_states->Wireframe());
+						else
+							context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+
+						auto viewport = m_deviceResources->GetScreenViewport();
+						context->RSSetViewports(1, &viewport);
+
+						context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+
+
+						auto renderTarget = m_deviceResources->GetRenderTargetView();
+						auto depthStencil = m_deviceResources->GetDepthStencilView();
+						context->OMSetRenderTargets(1, &renderTarget, depthStencil);
+						//context->OMSetRenderTargets(1, &g_d3dRenderTargetView, g_d3dDepthStencilView);
+
+						context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
+						//context->OMSetDepthStencilState(g_d3dDepthStencilState, 1);
+
+
+						context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+						//context->IASetPrimitiveTopology(part->primitiveType);
+
+						context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+						//context->DrawIndexed(_countof(g_Indicies), 0, 0);
+					}
 				}
 			}
+			else
+			{
+				// Draw opaque parts
+				for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
+				{
+					auto mesh = it->get();
+					assert(mesh != 0);
+
+					mesh->PrepareForRendering(context, *m_states, false, m_wireframe);
+
+					// Set Rasterizer State
+					if (m_wireframe)
+						context->RSSetState(m_states->Wireframe());
+					else
+						context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+
+
+					for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
+					{
+						auto part = pit->get();
+						auto vb = part->vertexBuffer.Get();
+						UINT vbStride = part->vertexStride;
+						UINT vbOffset = 0;
+
+						if (m_wireframe)
+							context->RSSetState(m_states->Wireframe());
+						else
+							context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+						
+						if (part->isAlpha)
+							continue;
+
+						auto imatrices = dynamic_cast<IEffectMatrices*>(part->effect.get());
+						if (imatrices)
+						{
+							imatrices->SetWorld(m_world);
+							imatrices->SetView(m_view);
+							imatrices->SetProjection(m_proj);
+						}
+
+						part->Draw(context, part->effect.get(), part->inputLayout.Get() );
+
+						context->IASetInputLayout(part->inputLayout.Get());
+
+						context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
+
+						// Note that if indexFormat is DXGI_FORMAT_R32_UINT, this model mesh part requires a Feature Level 9.2 or greater device
+						context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+
+
+						// Draw the primitive.
+						context->IASetPrimitiveTopology(part->primitiveType);
+
+						context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+
+					}
+				}
+			}
+			
 
 			// Draw alpha parts
 			/*for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
@@ -738,6 +810,11 @@ void Game::Render()
 				}
 			}*/
 #endif
+
+			//context->ClearState();
+			context->HSSetShader(nullptr, nullptr, 0);
+			context->DSSetShader(nullptr, nullptr, 0);
+			
 
 			if (*m_szStatus && m_showHud)
 			{
@@ -776,6 +853,10 @@ void Game::Render()
 				swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
 
 
+				WCHAR szTessellationFactor[100] = { 0 };
+				swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessellationFactor);
+
+
 #if defined(_XBOX_ONE) && defined(_TITLE)
 				RECT rct = Viewport::ComputeTitleSafeArea(size.right, size.bottom);
 
@@ -797,6 +878,7 @@ void Game::Render()
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 60), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 80), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 100), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 120), m_uiColor);
 #endif
 
 				m_spriteBatch->End();
@@ -926,6 +1008,10 @@ void Game::CreateDeviceDependentResources()
 	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_Frame]);
 	
 	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_Object]);
+
+
+	constantBufferDesc.ByteWidth = sizeof(XMFLOAT4);
+	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_TessellationFactor]);
 	
 	// Load & Complie Shaders
 
