@@ -104,6 +104,22 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11DomainShader>		m_domainShader;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShader;
 
+	// Vertex buffer data
+	Microsoft::WRL::ComPtr<ID3D11InputLayout>		m_vertexInputLayout;
+	Microsoft::WRL::ComPtr<ID3D11Buffer>			m_vertexBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer>			m_indexBuffer;
+
+	// Shader resources
+	enum ConstanBuffer
+	{
+		CB_Appliation,
+		CB_Frame,
+		CB_Object,
+		NumConstantBuffers
+	};
+
+	ID3D11Buffer* m_constantBuffers[NumConstantBuffers];
+
 	std::unique_ptr<DirectX::GamePad>               m_gamepad;
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;

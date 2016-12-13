@@ -23,6 +23,14 @@ namespace
 #endif
 }
 
+
+// Vertex data for a colored cube.
+struct VertexPosColor
+{
+	XMFLOAT3 Position;
+	XMFLOAT3 Color;
+};
+
 // Constructor.
 Game::Game() :
 	m_gridScale(10.f),
@@ -504,6 +512,12 @@ void Game::Update(DX::StepTimer const& timer)
 	}
 
 	m_world = Matrix::CreateFromQuaternion(m_modelRot);
+
+
+	auto context = m_deviceResources->GetD3DDeviceContext();
+	context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view, 0, 0);
+	context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
+
 }
 #pragma endregion
 
@@ -547,15 +561,15 @@ void Game::Render()
 	}
 	else
 	{
-		if (m_showGrid)
-		{
-			DrawGrid();
-		}
+		//if (m_showGrid)
+		//{
+		//	//DrawGrid();
+		//}
 
-		if (m_showCross)
-		{
-			DrawCross();
-		}
+		//if (m_showCross)
+		//{
+		//	//DrawCross();
+		//}
 
 		if (!m_model)
 		{
@@ -580,6 +594,8 @@ void Game::Render()
 			m_model->Draw(context, *, m_world, m_view, m_proj, m_wireframe);
 #else
 
+			const UINT vertexStride = sizeof(VertexPosColor);
+			const UINT offset = 0;
 
 			// Draw opaque parts
 			for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
@@ -598,6 +614,56 @@ void Game::Render()
 				for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
 				{
 					auto part = pit->get();
+
+
+					auto vb = part->vertexBuffer.Get();
+					UINT vbStride = part->vertexStride;
+					UINT vbOffset = 0;
+
+
+					//context->IASetInputLayout(part->inputLayout.Get());
+					context->IASetInputLayout(m_vertexInputLayout.Get());
+
+					context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
+					//context->IASetVertexBuffers(0, 1, &g_d3dVertexBuffer, &vertexStride, &offset);
+					context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+					//context->IASetIndexBuffer(g_d3dIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+					context->IASetPrimitiveTopology(part->primitiveType);
+					//context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+					context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+					context->VSSetConstantBuffers(0, 3, m_constantBuffers);
+
+					//context->RSSetState(g_d3dRasterizerState);
+
+					if (m_wireframe)
+						context->RSSetState(m_states->Wireframe());
+					else
+						context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+
+					auto viewport = m_deviceResources->GetScreenViewport();
+					context->RSSetViewports(1, &viewport);
+					
+					context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+
+
+					auto renderTarget = m_deviceResources->GetRenderTargetView();
+					auto depthStencil = m_deviceResources->GetDepthStencilView();
+					context->OMSetRenderTargets(1, &renderTarget, depthStencil);
+					//context->OMSetRenderTargets(1, &g_d3dRenderTargetView, g_d3dDepthStencilView);
+
+					context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
+					//context->OMSetDepthStencilState(g_d3dDepthStencilState, 1);
+
+
+					context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+					//context->DrawIndexed(_countof(g_Indicies), 0, 0);
+
+
+
+
+
+
 					/*if (part->isAlpha)
 						continue;
 
@@ -611,21 +677,21 @@ void Game::Render()
 
 					//part->Draw(context, part->effect.get(), part->inputLayout.Get() );
 				
-					context->IASetInputLayout(part->inputLayout.Get());
+					//context->IASetInputLayout(part->inputLayout.Get());
 
-					auto vb = part->vertexBuffer.Get();
-					UINT vbStride = part->vertexStride;
-					UINT vbOffset = 0;
-					context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
+					//auto vb = part->vertexBuffer.Get();
+					//UINT vbStride = part->vertexStride;
+					//UINT vbOffset = 0;
+					//context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
 
-					// Note that if indexFormat is DXGI_FORMAT_R32_UINT, this model mesh part requires a Feature Level 9.2 or greater device
-					context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+					//// Note that if indexFormat is DXGI_FORMAT_R32_UINT, this model mesh part requires a Feature Level 9.2 or greater device
+					//context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
 
 
-					// Draw the primitive.
-					context->IASetPrimitiveTopology(part->primitiveType);
+					//// Draw the primitive.
+					//context->IASetPrimitiveTopology(part->primitiveType);
 
-					context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+					//context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
 
 
 					//context->IASetInputLayout(part->inputLayout.Get());
@@ -842,9 +908,25 @@ void Game::CreateDeviceDependentResources()
 
 	m_states = std::make_unique<CommonStates>(device);
 
-	m_lineEffect = std::make_unique<BasicEffect>(device);
-	m_lineEffect->SetVertexColorEnabled(true);
+	//m_lineEffect = std::make_unique<BasicEffect>(device);
+	//m_lineEffect->SetVertexColorEnabled(true);
 
+
+	// Create the constant buffers for the variables defined in the vertex shader.
+	D3D11_BUFFER_DESC constantBufferDesc;
+	ZeroMemory(&constantBufferDesc, sizeof(D3D11_BUFFER_DESC));
+
+	constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	constantBufferDesc.ByteWidth = sizeof(XMMATRIX);
+	constantBufferDesc.CPUAccessFlags = 0;
+	constantBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+
+	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_Appliation]);
+	
+	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_Frame]);
+	
+	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_Object]);
+	
 	// Load & Complie Shaders
 
 
@@ -852,6 +934,19 @@ void Game::CreateDeviceDependentResources()
 	DX::ThrowIfFailed(device->CreateVertexShader(blob.data(), blob.size(),
 		nullptr, m_vertexShader.ReleaseAndGetAddressOf()));
 
+
+	// Create the input layout for the vertex shader.
+	D3D11_INPUT_ELEMENT_DESC vertexLayoutDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VertexPosColor,Position), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(VertexPosColor,Color), D3D11_INPUT_PER_VERTEX_DATA, 0 }
+	};
+
+	//device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc), blob.data(), blob.size(), &m_vertexInputLayout);
+
+	DX::ThrowIfFailed(device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc),
+		blob.data(), blob.size(), m_vertexInputLayout.ReleaseAndGetAddressOf()));
+	
 	blob = DX::ReadData(L"HullShader.cso");
 	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
 		nullptr, m_hullShader.ReleaseAndGetAddressOf()));
@@ -865,15 +960,8 @@ void Game::CreateDeviceDependentResources()
 		nullptr, m_pixelShader.ReleaseAndGetAddressOf()));
 
 
-	// Create our vertex input layout
-	const D3D11_INPUT_ELEMENT_DESC layout[] =
-	{
-		{ "WORLDPOS",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		//{ "NORMAL",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		//{ "TEXCOORD",  0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	};
 	
-	
+	/*
 	{
 		void const* shaderByteCode;
 		size_t byteCodeLength;
@@ -882,9 +970,9 @@ void Game::CreateDeviceDependentResources()
 
 		DX::ThrowIfFailed(device->CreateInputLayout(VertexPositionColor::InputElements, VertexPositionColor::InputElementCount,
 			shaderByteCode, byteCodeLength, m_lineLayout.ReleaseAndGetAddressOf()));
-	}
+	}*/
 
-	m_lineBatch = std::make_unique<PrimitiveBatch<VertexPositionColor>>(context);
+	//m_lineBatch = std::make_unique<PrimitiveBatch<VertexPositionColor>>(context);
 
 	m_world = Matrix::Identity;
 }
@@ -1218,7 +1306,11 @@ void Game::CreateProjection()
 		m_proj = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
 	}
 
-	m_lineEffect->SetProjection(m_proj);
+	//m_lineEffect->SetProjection(m_proj);
+
+	// This is required for a correct projection matrix.
+	auto context = m_deviceResources->GetD3DDeviceContext();
+	context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj, 0, 0);
 }
 
 void Game::RotateView( Quaternion& q )
