@@ -121,6 +121,13 @@ private:
 
 	ID3D11Buffer* m_constantBuffers[NumConstantBuffers];
 
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_diffuseTexture;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_normalTexture;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_specularTexture;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_displacementTexture;
+	Microsoft::WRL::ComPtr<ID3D11SamplerState>	m_samplerState;
+
+
 	std::unique_ptr<DirectX::GamePad>               m_gamepad;
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;
@@ -175,4 +182,6 @@ private:
 	std::vector<std::wstring>                       m_fileNames;
 
 	float											m_tessellationFactor;
+	float											m_displacementScale;
+	float											m_displacementBias;
 };

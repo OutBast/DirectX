@@ -91,4 +91,5 @@ namespace DX
 #include <SpriteBatch.h>
 #include <SpriteFont.h>
 #include <VertexTypes.h>
+#include <DDSTextureLoader.h>
 #include "ReadData.h"
