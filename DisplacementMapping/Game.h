@@ -7,6 +7,9 @@
 #include "StepTimer.h"
 #include "ArcBall.h"
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+
 #if defined(_XBOX_ONE) && defined(_TITLE)
 #include "DeviceResourcesXDK.h"
 #else
@@ -63,16 +66,16 @@ private:
 	void CreateWindowSizeDependentResources();
 	
 	void LoadModel();
-	void DrawGrid();
-	void DrawCross();
 
 	void CameraHome();
 
 	void CycleBackgroundColor();
 
 	void CreateProjection();
+	
+	void DrawModel();
 
-	void RotateView( DirectX::SimpleMath::Quaternion& q );
+	float DegreesToRadians(float degrees);
 
 #if defined(_XBOX_ONE) && defined(_TITLE)
 	void EnumerateModelFiles();
@@ -93,21 +96,27 @@ private:
 	std::unique_ptr<DirectX::SpriteFont>            m_fontComic;
 	std::unique_ptr<DirectX::Model>                 m_model;
 	std::unique_ptr<DirectX::CommonStates>          m_states;
-	std::unique_ptr<DirectX::BasicEffect>           m_lineEffect;
 
-	Microsoft::WRL::ComPtr<ID3D11InputLayout>       m_lineLayout;
 	std::unique_ptr<DirectX::PrimitiveBatch<DirectX::VertexPositionColor>>  m_lineBatch;
+
+	D3D11_VIEWPORT			m_viewportAdaptive;
+	D3D11_VIEWPORT			m_viewportDetails;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_firstTarget;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_secondTarget;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_firstTargetSh;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_secondTargetSh;
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> m_firstTargetTexture;
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> m_secondTargetTexture;
 
 	// Shaders
 	Microsoft::WRL::ComPtr<ID3D11VertexShader>		m_vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShader;
 	Microsoft::WRL::ComPtr<ID3D11DomainShader>		m_domainShader;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShader;
+	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShaderWireframe;
 
 	// Vertex buffer data
 	Microsoft::WRL::ComPtr<ID3D11InputLayout>		m_vertexInputLayout;
-	Microsoft::WRL::ComPtr<ID3D11Buffer>			m_vertexBuffer;
-	Microsoft::WRL::ComPtr<ID3D11Buffer>			m_indexBuffer;
 
 	// Shader resources
 	enum ConstantBuffer
@@ -126,57 +135,61 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_specularTexture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_displacementTexture;
 	Microsoft::WRL::ComPtr<ID3D11SamplerState>	m_samplerState;
-
-
-	std::unique_ptr<DirectX::GamePad>               m_gamepad;
+	
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;
 
 	DirectX::Keyboard::KeyboardStateTracker         m_keyboardTracker;
 	DirectX::Mouse::ButtonStateTracker              m_mouseButtonTracker;
-	DirectX::GamePad::ButtonStateTracker            m_gamepadButtonTracker;
 
-	DirectX::SimpleMath::Matrix                     m_world;
-	DirectX::SimpleMath::Matrix                     m_view;
-	DirectX::SimpleMath::Matrix                     m_proj;
+	DirectX::SimpleMath::Matrix                      m_world;
+	DirectX::SimpleMath::Matrix*                     m_view;
+	DirectX::SimpleMath::Matrix*                     m_proj;
 
-	DirectX::SimpleMath::Vector3                    m_cameraFocus;
-	DirectX::SimpleMath::Vector3                    m_lastCameraPos;
-	DirectX::SimpleMath::Quaternion                 m_cameraRot;
-	DirectX::SimpleMath::Quaternion                 m_viewRot;
+
+
+	DirectX::SimpleMath::Vector3*                   m_cameraFocus;
+	DirectX::SimpleMath::Vector3*                   m_lastCameraPos;
+	DirectX::SimpleMath::Quaternion*                m_cameraRot;
+	DirectX::SimpleMath::Quaternion*                m_viewRot;
+
+	DirectX::SimpleMath::Vector3                    m_cameraFocus1;
+	DirectX::SimpleMath::Vector3                    m_lastCameraPos1;
+	DirectX::SimpleMath::Quaternion                 m_cameraRot1;
+	DirectX::SimpleMath::Quaternion                 m_viewRot1;
+	DirectX::SimpleMath::Matrix                     m_view1;
+	DirectX::SimpleMath::Matrix                     m_proj1;
+
+	DirectX::SimpleMath::Vector3                    m_cameraFocus2;
+	DirectX::SimpleMath::Vector3                    m_lastCameraPos2;
+	DirectX::SimpleMath::Quaternion                 m_cameraRot2;
+	DirectX::SimpleMath::Quaternion                 m_viewRot2;
+	DirectX::SimpleMath::Matrix                     m_view2;
+	DirectX::SimpleMath::Matrix                     m_proj2;
+
 	DirectX::SimpleMath::Color                      m_clearColor;
 	DirectX::SimpleMath::Color                      m_uiColor;
 
-	DirectX::SimpleMath::Quaternion                 m_modelRot;
 
-	float                                           m_gridScale;
 	float                                           m_fov;
-	float                                           m_zoom;
 	float                                           m_distance;
 	float                                           m_farPlane;
 	float                                           m_sensitivity;
-	size_t                                          m_gridDivs;
 
 	bool                                            m_showHud;
-	bool                                            m_showCross;
-	bool                                            m_showGrid;
-	bool                                            m_usingGamepad;
 	bool                                            m_wireframe;
+	bool                                            m_wireframeWithMaterial;
 	bool                                            m_ccw;
 	bool                                            m_reloadModel;
-	bool                                            m_lhcoords;
-	bool                                            m_fpscamera;
 	bool											m_tessellation;
 	bool											m_displacementMap;
 	bool											m_backFaceCulling;
+	bool											m_leftCameraEnable;
 
 	WCHAR                                           m_szModelName[MAX_PATH];
 	WCHAR                                           m_szStatus[ 512 ];
 	WCHAR                                           m_szError[ 512 ];
-
-	ArcBall                                         m_ballCamera;
-	ArcBall                                         m_ballModel;
-
+	
 	int                                             m_selectFile;
 	int                                             m_firstFile;
 	std::vector<std::wstring>                       m_fileNames;
@@ -184,4 +197,13 @@ private:
 	float											m_tessellationFactor;
 	float											m_displacementScale;
 	float											m_displacementBias;
+
+	float*											m_pitch;
+	float*											m_yaw;
+	float											m_pitch1;
+	float											m_yaw1;
+	float											m_pitch2;
+	float											m_yaw2;
+	float m_globalDistance;
+	float m_speed;
 };

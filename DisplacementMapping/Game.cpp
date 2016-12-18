@@ -23,17 +23,18 @@ namespace
 #endif
 }
 
+#define MAX_TESSELLATION_DISTANCE 1000.0f
 #define MAX_TESS_FACTOR 63.0f
 #define MIN_TESS_FACTOR 1.0f
 #define TESS_STEP 0.1f;
 
 #define MAX_DISP_SCALE 20.0f
 #define MIN_DISP_SCALE -20.0f
-#define DISP_SCALE_STEP 0.1f;
+#define DISP_SCALE_STEP 0.01f;
 
 #define MAX_DISP_BIAS 5.0f
 #define MIN_DISP_BIAS -5.0f
-#define DISP_BIAS_STEP 0.1f;
+#define DISP_BIAS_STEP 0.01f;
 
 // Vertex data for a colored cube.
 struct VertexPosColor
@@ -42,34 +43,35 @@ struct VertexPosColor
 	XMFLOAT3 Color;
 };
 
+//Vector3 startCameraPosition = Vector3(0.0f, 0.0f, 500.0f)
+
 XMFLOAT4 shaderFactors;
+float oldTessellationFactor = 1.0f;
+float oldDisplacementScale = 0.0f;
+float oldDisplacementBias = 0.0f;
 
 // Constructor.
 Game::Game() :
-	m_gridScale(10.f),
 	m_fov(XM_PI / 4.f),
-	m_zoom(10.f),
 	m_distance(100.f),
+	m_speed(100.0f),
 	m_farPlane(10000.f),
-	m_sensitivity(100.f),
-	m_gridDivs(20),
+	m_sensitivity(1.f),
 	m_showHud(true),
-	m_showCross(true),
-	m_showGrid(false),
-	m_usingGamepad(false),
 	m_wireframe(false),
+	m_wireframeWithMaterial(true),
 	m_ccw(false),
 	m_reloadModel(false),
-	m_lhcoords(true),
-	m_fpscamera(false),
 	m_tessellation(false),
 	m_displacementMap(false),
 	m_backFaceCulling(false),
+	m_leftCameraEnable(true),
 	m_selectFile(0),
 	m_firstFile(0),
 	m_tessellationFactor(1.0f),
 	m_displacementScale(0.0f),
 	m_displacementBias(0.0f),
+	m_globalDistance(0.0f),
 	m_diffuseTexture(nullptr),
 	m_normalTexture(nullptr),
 	m_specularTexture(nullptr),
@@ -94,6 +96,18 @@ Game::Game() :
 	*m_szError = 0;
 
 	shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
+	m_view1 = Matrix::Identity;
+	m_view2 = Matrix::Identity;
+	m_proj1 = Matrix::Identity;
+	m_proj2 = Matrix::Identity;
+	m_view = &m_view1;
+	m_proj = &m_proj1;
+	m_pitch1 = 0.0f;
+	m_yaw1 = 0.0f;
+	m_pitch2 = 0.0f;
+	m_yaw2 = 0.0f;
+	m_pitch = &m_pitch1;
+	m_yaw = &m_yaw1;
 }
 
 // Initialize the Direct3D resources required to run.
@@ -103,7 +117,6 @@ void Game::Initialize(IUnknown* window)
 void Game::Initialize(HWND window, int width, int height)
 #endif
 {
-	m_gamepad = std::make_unique<GamePad>();
 	m_keyboard = std::make_unique<Keyboard>();
 	m_mouse = std::make_unique<Mouse>();
 
@@ -136,6 +149,31 @@ void Game::Tick()
 // Updates the world
 void Game::Update(DX::StepTimer const& timer)
 {
+
+	if (m_leftCameraEnable)
+	{
+		m_cameraFocus = &m_cameraFocus1;
+		m_lastCameraPos = &m_lastCameraPos1;
+		m_cameraRot = &m_cameraRot1;
+		m_viewRot = &m_viewRot1;
+		m_view = &m_view1;
+		m_proj = &m_proj1;
+		m_pitch = &m_pitch1;
+		m_yaw = &m_yaw1;
+	} 
+	else
+	{
+		m_cameraFocus = &m_cameraFocus2;
+		m_lastCameraPos = &m_lastCameraPos2;
+		m_cameraRot = &m_cameraRot2;
+		m_viewRot = &m_viewRot2;
+		m_view = &m_view2;
+		m_proj = &m_proj2;
+		m_pitch = &m_pitch2;
+		m_yaw = &m_yaw2;
+	}
+
+
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
 	if (m_reloadModel)
@@ -143,202 +181,20 @@ void Game::Update(DX::StepTimer const& timer)
 
 	float elapsedTime = float(timer.GetElapsedSeconds());
 
-	float handed = (m_lhcoords) ? 1.f : -1.f;
+	float handed = -1.f;//(m_lhcoords) ? 1.f : -1.f;
 
-	auto gpad = m_gamepad->GetState(0);
-	if (gpad.IsConnected())
-	{
-		m_usingGamepad = true;
-
-		m_gamepadButtonTracker.Update(gpad);
-
-		if (!m_fileNames.empty())
-		{
-			if (m_gamepadButtonTracker.dpadUp == GamePad::ButtonStateTracker::PRESSED)
-			{
-				--m_selectFile;
-				if (m_selectFile < 0)
-					m_selectFile = int(m_fileNames.size()) - 1;
-			}
-			else if (m_gamepadButtonTracker.dpadDown == GamePad::ButtonStateTracker::PRESSED)
-			{
-				++m_selectFile;
-				if (m_selectFile >= int(m_fileNames.size()))
-					m_selectFile = 0;
-			}
-			else if (gpad.IsAPressed())
-			{
-				swprintf_s(m_szModelName, L"D:\\%ls", m_fileNames[m_selectFile].c_str());
-				m_selectFile = m_firstFile = 0;
-				m_fileNames.clear();
-				LoadModel();
-			}
-			else if (gpad.IsBPressed())
-			{
-				m_selectFile = m_firstFile = 0;
-				m_fileNames.clear();
-			}
-		}
-		else
-		{
-			// Translate camera
-			Vector3 move;
-
-			if (m_fpscamera)
-			{
-				move.x = gpad.thumbSticks.leftX;
-				move.z =  gpad.thumbSticks.leftY * handed;
-			}
-			else
-			{
-				m_zoom -= gpad.thumbSticks.leftY * elapsedTime * m_sensitivity;
-				m_zoom = std::max(m_zoom, 0.01f);
-			}
-
-			if (gpad.IsDPadUpPressed())
-			{
-				move.y += 1.f;
-			}
-			else if (gpad.IsDPadDownPressed())
-			{
-				move.y -= 1.f;
-			}
-
-			if (gpad.IsDPadLeftPressed())
-			{
-				move.x -= 1.f;
-			}
-			else if (gpad.IsDPadRightPressed())
-			{
-				move.x += 1.f;
-			}
-
-			Matrix im;
-			m_view.Invert(im);
-			move = Vector3::TransformNormal(move, im);
-
-			// Rotate camera
-			if (m_fpscamera)
-			{
-				Vector3 spin(gpad.thumbSticks.rightX, gpad.thumbSticks.rightY, 0);
-				spin *= elapsedTime * m_sensitivity;
-
-				Quaternion q = Quaternion::CreateFromAxisAngle(Vector3::Right, spin.y * handed);
-				q *= Quaternion::CreateFromAxisAngle(Vector3::Up, -spin.x * handed);
-				q.Normalize();
-
-				RotateView(q);
-			}
-			else
-			{
-				Vector3 orbit(gpad.thumbSticks.rightX, gpad.thumbSticks.rightY, gpad.thumbSticks.leftX);
-				orbit *= elapsedTime * m_sensitivity;
-
-				m_cameraRot *= Quaternion::CreateFromAxisAngle(im.Right(), orbit.y * handed);
-				m_cameraRot *= Quaternion::CreateFromAxisAngle(im.Up(), -orbit.x * handed);
-				m_cameraRot *= Quaternion::CreateFromAxisAngle(im.Forward(), orbit.z);
-				m_cameraRot.Normalize();
-			}
-
-			m_cameraFocus += move * m_distance * elapsedTime * m_sensitivity;
-
-			// FOV camera
-			if (gpad.triggers.right > 0 || gpad.triggers.left > 0)
-			{
-				m_fov += (gpad.triggers.right - gpad.triggers.left) * elapsedTime * m_sensitivity;
-				m_fov = std::min(XM_PI / 2.f, std::max(m_fov, XM_PI / 10.f));
-
-				CreateProjection();
-			}
-
-			// Other controls
-			if (m_gamepadButtonTracker.leftShoulder == GamePad::ButtonStateTracker::PRESSED
-				&& m_gamepadButtonTracker.rightShoulder == GamePad::ButtonStateTracker::PRESSED)
-			{
-				m_sensitivity = 1.f;
-			}
-			else
-			{
-				if (gpad.IsRightShoulderPressed())
-				{
-					m_sensitivity += 0.01f;
-					if (m_sensitivity > 10.f)
-						m_sensitivity = 10.f;
-				}
-				else if (gpad.IsLeftShoulderPressed())
-				{
-					m_sensitivity -= 0.01f;
-					if (m_sensitivity < 0.01f)
-						m_sensitivity = 0.01f;
-				}
-			}
-
-			if (gpad.IsViewPressed())
-			{
-#if defined(_XBOX_ONE) && defined(_TITLE)
-				EnumerateModelFiles();
-#else
-				PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 0);
-#endif
-			}
-
-			if (m_gamepadButtonTracker.b == GamePad::ButtonStateTracker::PRESSED)
-			{
-				int value = ((int)m_ccw << 1) | ((int)m_wireframe);
-
-				value = value + 1;
-				if (value >= 3) value = 0;
-
-				m_wireframe = (value & 0x1) != 0;
-				m_ccw       = (value & 0x2) != 0;
-			}
-
-			if (m_gamepadButtonTracker.x == GamePad::ButtonStateTracker::PRESSED)
-			{
-				int value = ((int)m_showGrid << 2) | ((int)m_showHud << 1) | ((int)m_showCross);
-
-				value = (value + 1) & 0x7;
-
-				m_showCross = (value & 0x1) != 0;
-				m_showHud   = (value & 0x2) != 0;
-				m_showGrid  = (value & 0x4) != 0;
-			}
-
-			if (m_gamepadButtonTracker.y == GamePad::ButtonStateTracker::PRESSED)
-			{
-				CycleBackgroundColor();
-			}
-
-			if ( m_gamepadButtonTracker.a == GamePad::ButtonStateTracker::PRESSED)
-			{
-				m_fpscamera = !m_fpscamera;
-			}
-
-			if (m_gamepadButtonTracker.leftStick == GamePad::ButtonStateTracker::PRESSED)
-			{
-				CameraHome();
-				m_modelRot = Quaternion::Identity;
-			}
-
-			if (!m_fpscamera && m_gamepadButtonTracker.rightStick == GamePad::ButtonStateTracker::PRESSED)
-			{
-				m_cameraRot = m_modelRot = Quaternion::Identity;
-			}
-		}
-	}
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
-	else
-	{
-		m_usingGamepad = false;
 
-		m_gamepadButtonTracker.Reset();
-
+		RECT size = m_deviceResources->GetOutputSize();
+		m_viewportAdaptive = Viewport(0.0f, 0.0f, size.right / 2.0f, size.bottom);
+		m_viewportDetails = Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom);
+		
 		auto kb = m_keyboard->GetState();
 
 		// Camera movement
 		Vector3 move = Vector3::Zero;
 
-		float scale = m_distance;
+		float scale = m_speed;
 		if (kb.LeftShift || kb.RightShift)
 			scale *= 0.5f;
 
@@ -362,148 +218,79 @@ void Game::Update(DX::StepTimer const& timer)
 
 		if (kb.Q || kb.E)
 		{
-			float flip = (kb.Q) ? 1.f : -1.f;
-			Quaternion q = Quaternion::CreateFromAxisAngle(Vector3::Up, handed * elapsedTime * flip);
-
-			RotateView(q);
+			if (kb.Q)
+			{
+				m_world *= Matrix::CreateRotationZ(0.5f * timer.GetElapsedSeconds());
+			}
+			else
+			{
+				m_world *= Matrix::CreateRotationZ(-0.5f * timer.GetElapsedSeconds());
+			}
 		}
-
-		///////////////////////////
 		
-		if (kb.H)
+		// Mouse controls
+		auto mouse = m_mouse->GetState();
+
+		if (mouse.positionMode == Mouse::MODE_RELATIVE)
 		{
-			if (m_tessellationFactor < MAX_TESS_FACTOR)
+			Vector3 delta = Vector3(float(mouse.x), float(mouse.y), 0.f) * 0.5f * timer.GetElapsedSeconds();
+
+			*m_pitch += delta.y;
+			*m_yaw += delta.x;
+
+			// limit pitch to straight up or straight down
+			// with a little fudge-factor to avoid gimbal lock
+			float limit = XM_PI / 2.0f - 0.01f;
+			*m_pitch = std::max(-limit, *m_pitch);
+			*m_pitch = std::min(+limit, *m_pitch);
+
+			// keep longitude in sane range by wrapping
+			if (*m_yaw > XM_PI)
 			{
-				m_tessellationFactor += TESS_STEP;
-			} 
-			else
+				*m_yaw -= XM_PI * 2.0f;
+			}
+			else if (*m_yaw < -XM_PI)
 			{
-				m_tessellationFactor = MAX_TESS_FACTOR;
+				*m_yaw += XM_PI * 2.0f;
 			}
 		}
 
-
-		if (kb.B)
-		{
-			if (m_tessellationFactor > MIN_TESS_FACTOR)
-			{
-				m_tessellationFactor -= TESS_STEP;
-			}
-			else
-			{
-				m_tessellationFactor = MIN_TESS_FACTOR;
-			}
-		}
-
-		if (kb.J)
-		{
-			if (m_displacementScale < MAX_DISP_SCALE)
-			{
-				m_displacementScale += DISP_SCALE_STEP;
-			}
-			else
-			{
-				m_displacementScale = MAX_DISP_SCALE;
-			}
-		}
-
-
-		if (kb.N)
-		{
-			if (m_displacementScale > MIN_DISP_SCALE)
-			{
-				m_displacementScale -= DISP_SCALE_STEP;
-			}
-			else
-			{
-				m_displacementScale = MIN_DISP_SCALE;
-			}
-		}
-
-		if (kb.K)
-		{
-			if (m_displacementBias < MAX_DISP_BIAS)
-			{
-				m_displacementBias += DISP_BIAS_STEP;
-			}
-			else
-			{
-				m_displacementBias = MAX_DISP_BIAS;
-			}
-		}
-
-
-		if (kb.M)
-		{
-			if (m_displacementBias > MIN_DISP_BIAS)
-			{
-				m_displacementBias -= DISP_BIAS_STEP;
-			}
-			else
-			{
-				m_displacementBias = MIN_DISP_BIAS;
-			}
-		}
-		shaderFactors = XMFLOAT4(m_tessellationFactor, m_displacementScale, m_displacementBias, 0.0f);
-		context->UpdateSubresource(m_constantBuffers[CB_TessellationFactor], 0, nullptr, &shaderFactors, 0, 0);
-
-		///////////////////////
+		m_mouse->SetMode(mouse.leftButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
+		
 		Matrix im;
-		m_view.Invert(im);
+		(*m_view).Invert(im);
 		move = Vector3::TransformNormal(move, im);
 
-		m_cameraFocus += move * elapsedTime;
+		Quaternion q = Quaternion::CreateFromYawPitchRoll(*m_yaw, *m_pitch, 0.f);
+		q.Normalize();
+		
+		q.Inverse(*m_cameraRot);
+		*m_cameraFocus += move * elapsedTime;
 
-		// FOV camera
-		if (kb.OemOpenBrackets || kb.OemCloseBrackets)
-		{
-			if (kb.OemOpenBrackets)
-				m_fov += elapsedTime;
-			else if ( kb.OemCloseBrackets)
-				m_fov -= elapsedTime;
-
-			m_fov = std::min(XM_PI / 2.f, std::max(m_fov, XM_PI / 10.f));
-
-			CreateProjection();
-		}
-
-		// Other keyboard controls
 		if (kb.Home)
 		{
 			CameraHome();
 		}
-
-		if (kb.End)
-		{
-			m_modelRot = Quaternion::Identity;
-		}
-
-		if (m_showGrid)
-		{
-			if (kb.OemPlus)
-			{
-				m_gridScale += 2.f * elapsedTime;
-			}
-			else if (kb.OemMinus)
-			{
-				m_gridScale -= 2.f * elapsedTime;
-				if (m_gridScale < 1.f)
-					m_gridScale = 1.f;
-			}
-		}
-
-		m_keyboardTracker.Update(kb);
 		
-		if (m_keyboardTracker.pressed.J)
-			m_showCross = !m_showCross;
+		// Update camera
+		Vector3 dir = Vector3::Transform(/*(m_lhcoords) ? Vector3::Forward :*/ Vector3::Backward, *m_cameraRot);
+		Vector3 up = Vector3::Transform(Vector3::Up, *m_cameraRot);
 
-		if (m_keyboardTracker.pressed.G)
-			m_showGrid = !m_showGrid;
+		*m_lastCameraPos = *m_cameraFocus + m_distance * dir;
+
+		
+		*m_view = XMMatrixLookAtRH(*m_lastCameraPos, *m_cameraFocus, up);
+		context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
+				
+		m_keyboardTracker.Update(kb);		
 
 		if (m_keyboardTracker.pressed.R)
 			m_wireframe = !m_wireframe;
 
-		if (m_keyboardTracker.pressed.V && !m_wireframe)
+		if (m_keyboardTracker.pressed.F)
+			m_wireframeWithMaterial = !m_wireframeWithMaterial;
+
+		if (m_keyboardTracker.pressed.T && !m_wireframe)
 			m_ccw = !m_ccw;
 
 		if (m_keyboardTracker.pressed.Z)
@@ -520,11 +307,38 @@ void Game::Update(DX::StepTimer const& timer)
 		if (m_keyboardTracker.pressed.F1)
 		{
 			m_tessellation = !m_tessellation;
+			if (m_tessellation)
+			{
+				m_tessellationFactor = oldTessellationFactor;
+			}
+			else
+			{
+				oldTessellationFactor = m_tessellationFactor;
+				m_tessellationFactor = MIN_TESS_FACTOR;
+			}
 		}
+
+		if (m_keyboardTracker.pressed.D1)
+		{
+			m_leftCameraEnable = !m_leftCameraEnable;
+		}
+
 
 		if (m_keyboardTracker.pressed.F2)
 		{
 			m_displacementMap = !m_displacementMap;
+			if (m_displacementMap)
+			{
+				m_displacementScale = oldDisplacementScale;
+				m_displacementBias = oldDisplacementBias;
+			}
+			else
+			{
+				oldDisplacementScale = m_displacementScale;
+				m_displacementScale = 0.0f;
+				oldDisplacementBias = m_displacementBias;
+				m_displacementBias = 0.0f;
+			}
 		}
 
 		if (m_keyboardTracker.pressed.F3)
@@ -532,100 +346,109 @@ void Game::Update(DX::StepTimer const& timer)
 			m_backFaceCulling = !m_backFaceCulling;
 		}
 
-		// Mouse controls
-		auto mouse = m_mouse->GetState();
-
-		m_mouseButtonTracker.Update(mouse);
-
-		if (mouse.positionMode == Mouse::MODE_RELATIVE)
+		if (m_tessellation)
 		{
-			// Translate camera
-			Vector3 delta;
-			if (kb.LeftShift || kb.RightShift)
+			if (kb.H)
 			{
-				delta = Vector3(0.f, 0.f, -float(mouse.y) * handed) * m_distance * elapsedTime;
-			}
-			else
-			{
-				delta = Vector3(-float(mouse.x), float(mouse.y), 0.f) * m_distance * elapsedTime;
-			}
-
-			delta = Vector3::TransformNormal(delta, im);
-
-			m_cameraFocus += delta * elapsedTime;
-		}
-		else if (m_ballModel.IsDragging())
-		{
-			// Rotate model
-			m_ballModel.OnMove(mouse.x, mouse.y);
-			m_modelRot = m_ballModel.GetQuat();
-		}
-		else if (m_ballCamera.IsDragging())
-		{
-			// Rotate camera
-			m_ballCamera.OnMove(mouse.x, mouse.y);
-			Quaternion q = m_ballCamera.GetQuat();
-			q.Inverse(m_cameraRot);
-		}
-		else
-		{
-			// Zoom with scroll wheel
-			m_zoom = 1.f + float(mouse.scrollWheelValue) / float(120 * 10);
-			m_zoom = std::max(m_zoom, 0.01f);
-		}
-
-		if (!m_ballModel.IsDragging() && !m_ballCamera.IsDragging())
-		{
-			if (m_mouseButtonTracker.rightButton == Mouse::ButtonStateTracker::PRESSED)
-				m_mouse->SetMode(Mouse::MODE_RELATIVE);
-			else if (m_mouseButtonTracker.rightButton == Mouse::ButtonStateTracker::RELEASED)
-				m_mouse->SetMode(Mouse::MODE_ABSOLUTE);
-
-			if (m_mouseButtonTracker.leftButton == Mouse::ButtonStateTracker::PRESSED)
-			{
-				if (kb.LeftShift || kb.RightShift)
+				if (m_tessellationFactor < MAX_TESS_FACTOR)
 				{
-					m_ballModel.OnBegin(mouse.x, mouse.y);
+					m_tessellationFactor += TESS_STEP;
 				}
 				else
 				{
-					m_ballCamera.OnBegin(mouse.x, mouse.y);
+					m_tessellationFactor = MAX_TESS_FACTOR;
+				}
+			}
+
+
+			if (kb.B)
+			{
+				if (m_tessellationFactor > MIN_TESS_FACTOR)
+				{
+					m_tessellationFactor -= TESS_STEP;
+				}
+				else
+				{
+					m_tessellationFactor = MIN_TESS_FACTOR;
 				}
 			}
 		}
-		else if (m_mouseButtonTracker.leftButton == Mouse::ButtonStateTracker::RELEASED)
+
+		if (m_displacementMap)
 		{
-			m_ballCamera.OnEnd();
-			m_ballModel.OnEnd();
+			if (kb.J)
+			{
+				if (m_displacementScale < MAX_DISP_SCALE)
+				{
+					m_displacementScale += DISP_SCALE_STEP;
+				}
+				else
+				{
+					m_displacementScale = MAX_DISP_SCALE;
+				}
+			}
+
+			if (kb.N)
+			{
+				if (m_displacementScale > MIN_DISP_SCALE)
+				{
+					m_displacementScale -= DISP_SCALE_STEP;
+				}
+				else
+				{
+					m_displacementScale = MIN_DISP_SCALE;
+				}
+			}
+
+			if (kb.K)
+			{
+				if (m_displacementBias < MAX_DISP_BIAS)
+				{
+					m_displacementBias += DISP_BIAS_STEP;
+				}
+				else
+				{
+					m_displacementBias = MAX_DISP_BIAS;
+				}
+			}
+
+			if (kb.M)
+			{
+				if (m_displacementBias > MIN_DISP_BIAS)
+				{
+					m_displacementBias -= DISP_BIAS_STEP;
+				}
+				else
+				{
+					m_displacementBias = MIN_DISP_BIAS;
+				}
+			}
 		}
-	}
+
+		if (m_tessellation)
+		{
+			m_globalDistance = SimpleMath::Vector3::Distance(m_lastCameraPos1, Vector3(0.0f, 0.0f, 0.0f));
+			float distanceFactorToTess = m_globalDistance / MAX_TESSELLATION_DISTANCE;
+
+			m_tessellationFactor = (1 - distanceFactorToTess) * MAX_TESS_FACTOR + distanceFactorToTess;
+
+			if (m_globalDistance > MAX_TESSELLATION_DISTANCE)
+			{
+				m_tessellationFactor = MIN_TESS_FACTOR;
+			}
+		}
+		else
+		{
+			m_tessellationFactor = MIN_TESS_FACTOR;
+		}
+
+		shaderFactors = XMFLOAT4(m_tessellationFactor, m_displacementScale, m_displacementBias, 0.0f);
+		context->UpdateSubresource(m_constantBuffers[CB_TessellationFactor], 0, nullptr, &shaderFactors, 0, 0);
 #endif
-
-	// Update camera
-	Vector3 dir = Vector3::Transform((m_lhcoords) ? Vector3::Forward : Vector3::Backward, m_cameraRot);
-	Vector3 up = Vector3::Transform(Vector3::Up, m_cameraRot);
-
-	m_lastCameraPos = m_cameraFocus + (m_distance * m_zoom) * dir;
-		
-	if (m_lhcoords)
-	{
-		m_view = XMMatrixLookAtLH(m_lastCameraPos, m_cameraFocus, up);
-	}
-	else
-	{
-		m_view = Matrix::CreateLookAt(m_lastCameraPos, m_cameraFocus, up);
-	}
-
-	m_world = Matrix::CreateFromQuaternion(m_modelRot);
-	
-	context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view, 0, 0);
-	context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
-
 }
 #pragma endregion
 
 #pragma region Frame Render
-// Draws the scene
 void Game::Render()
 {
 	// Don't try to render anything before the first Update.
@@ -664,16 +487,6 @@ void Game::Render()
 	}
 	else
 	{
-		//if (m_showGrid)
-		//{
-		//	//DrawGrid();
-		//}
-
-		//if (m_showCross)
-		//{
-		//	//DrawCross();
-		//}
-
 		if (!m_model)
 		{
 			m_spriteBatch->Begin();
@@ -684,7 +497,7 @@ void Game::Render()
 			}
 			else
 			{
-				m_fontComic->DrawString(m_spriteBatch.get(), L"No model is loaded\n", XMFLOAT2(100, 100), Colors::Red);
+				m_fontComic->DrawString(m_spriteBatch.get(), L"No model is loaded\nPress 'O' to load a model from disk", XMFLOAT2(100, 100), Colors::Red);
 			}
 
 			m_spriteBatch->End();
@@ -693,10 +506,6 @@ void Game::Render()
 		{
 			auto context = m_deviceResources->GetD3DDeviceContext();
 
-#if 0
-			m_model->Draw(context, *, m_world, m_view, m_proj, m_wireframe);
-#else
-
 			// Set sampler state.
 			ID3D11SamplerState* samplers[] =
 			{
@@ -704,164 +513,143 @@ void Game::Render()
 				m_states->LinearWrap(),
 			};
 
-			if (m_tessellation)
-			{
-				// Set Rasterizer State
-				if (m_wireframe)
-					context->RSSetState(m_states->Wireframe());
-				else
-					context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
-
-
-				context->VSSetConstantBuffers(0, 4, m_constantBuffers);
-				context->HSSetConstantBuffers(0, 4, m_constantBuffers);				
-				context->DSSetConstantBuffers(0, 4, m_constantBuffers);
-				context->PSSetConstantBuffers(0, 4, m_constantBuffers);
-
-
-				context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
-
-				context->DSSetShader(m_domainShader.Get(), nullptr, 0);
-				context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-				context->DSSetShaderResources(0, 1, m_displacementTexture.GetAddressOf());
-				
-				context->GSSetShader(nullptr, nullptr, 0);
-
-				auto viewport = m_deviceResources->GetScreenViewport();
-				context->RSSetViewports(1, &viewport);
-
-				context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
-
-
-
-				context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-
-				//context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-				context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-				context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
-				context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
-
-
-
-				auto renderTarget = m_deviceResources->GetRenderTargetView();
-				auto depthStencil = m_deviceResources->GetDepthStencilView();
-				context->OMSetRenderTargets(1, &renderTarget, depthStencil);
-
-				context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
-
-
-				context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
-
-				// Draw opaque parts
-				for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
-				{
-					auto mesh = it->get();
-					assert(mesh != 0);
-
-
-					
-					for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
-					{
-						auto part = pit->get();
-
-						auto vb = part->vertexBuffer.Get();
-						UINT vbStride = part->vertexStride;
-						UINT vbOffset = 0;
-
-						context->IASetInputLayout(m_vertexInputLayout.Get());
-						context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
-						context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
-
-						context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view, 0, 0);
-						context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
-						context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj, 0, 0);
-
-						context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
-					}
-				}
-			}
+			// Set Rasterizer State
+			if (m_wireframe)
+				context->RSSetState(m_states->Wireframe());
 			else
-			{
-				// Set Rasterizer State
-				if (m_wireframe)
-					context->RSSetState(m_states->Wireframe());
-				else
-					context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+				context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+			
+
+			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view1, 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj1, 0, 0);
+
+			context->VSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->HSSetConstantBuffers(0, 4, m_constantBuffers);				
+			context->DSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->PSSetConstantBuffers(0, 4, m_constantBuffers);
+
+			context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+			context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+
+			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
+			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+			context->DSSetShaderResources(0, 1, m_displacementTexture.GetAddressOf());
 				
-				context->VSSetConstantBuffers(0, 4, m_constantBuffers);
-				context->PSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->GSSetShader(nullptr, nullptr, 0);
 
-				context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-				context->HSSetShader(nullptr, nullptr, 0);
-				context->DSSetShader(nullptr, nullptr, 0);
-				context->GSSetShader(nullptr, nullptr, 0);
+			auto viewport = m_deviceResources->GetScreenViewport();
+			context->RSSetViewports(1, &viewport);
+			//context->RSSetViewports(1, &m_viewportAdaptive);
 
-				auto viewport = m_deviceResources->GetScreenViewport();
-				context->RSSetViewports(1, &viewport);
+			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+			context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+			context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
+			context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
+			context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
 
-				context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+			auto renderTarget = m_deviceResources->GetRenderTargetView();
+			auto depthStencil = m_deviceResources->GetDepthStencilView();
+			//context->OMSetRenderTargets(1, m_firstTarget.GetAddressOf(), depthStencil);
+			context->OMSetRenderTargets(1, m_firstTarget.GetAddressOf(), depthStencil);
+			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
+			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+			DrawModel();
 
-
+			if (m_wireframeWithMaterial)
+			{
+				context->RSSetState(m_states->Wireframe());
+				context->PSSetShader(m_pixelShaderWireframe.Get(), nullptr, 0);
 				context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-
 				context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-				context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
-				context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
-
-
-
-				auto renderTarget = m_deviceResources->GetRenderTargetView();
-				auto depthStencil = m_deviceResources->GetDepthStencilView();
-				context->OMSetRenderTargets(1, &renderTarget, depthStencil);
-
-				context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
-
-				// Draw opaque parts
-				for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
-				{
-					auto mesh = it->get();
-					assert(mesh != 0);
-
-					for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
-					{
-						auto part = pit->get();
-
-						auto vb = part->vertexBuffer.Get();
-						UINT vbStride = part->vertexStride;
-						UINT vbOffset = 0;
-
-						context->IASetInputLayout(m_vertexInputLayout.Get());
-						context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
-						context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
-
-						context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view, 0, 0);
-						context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
-						context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj, 0, 0);
-
-						context->IASetPrimitiveTopology(part->primitiveType);
-						context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
-					}
-				}
+				DrawModel();
 			}
-#endif
+			
+			// Set Rasterizer State
+			if (m_wireframe)
+				context->RSSetState(m_states->Wireframe());
+			else
+				context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
 
-			//context->ClearState();
+
+			context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view2, 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj2, 0, 0);
+			
+
+			context->VSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->HSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->DSSetConstantBuffers(0, 4, m_constantBuffers);
+			context->PSSetConstantBuffers(0, 4, m_constantBuffers);
+
+			context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+			context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+
+			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
+			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+			context->DSSetShaderResources(0, 1, m_displacementTexture.GetAddressOf());
+
+			context->GSSetShader(nullptr, nullptr, 0);
+			
+			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+			context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+			context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
+			context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
+			context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
+
+			context->OMSetRenderTargets(1, m_secondTarget.GetAddressOf(), depthStencil);
+			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
+
+			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+			DrawModel();
+
+			if (m_wireframeWithMaterial)
+			{
+				context->RSSetState(m_states->Wireframe());
+				context->PSSetShader(m_pixelShaderWireframe.Get(), nullptr, 0);
+				context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
+				context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
+				DrawModel();
+			}
+
 			context->HSSetShader(nullptr, nullptr, 0);
 			context->DSSetShader(nullptr, nullptr, 0);
 			
+			context->OMSetRenderTargets(1, &renderTarget, nullptr);
+
+
+			RECT firstRect;
+			firstRect.left = static_cast<LONG>(0);
+			firstRect.top = static_cast<LONG>(0);
+			firstRect.right = static_cast<LONG>(1920);
+			firstRect.bottom = static_cast<LONG>(1080);
+
+
+			m_spriteBatch->Begin();
+			context->RSSetViewports(1, &m_viewportAdaptive);
+			m_spriteBatch->Draw(m_firstTargetSh.Get(), firstRect);
+			m_spriteBatch->End();
+
+			m_spriteBatch->Begin();
+			context->RSSetViewports(1, &m_viewportDetails);
+			m_spriteBatch->Draw(m_secondTargetSh.Get(), firstRect);
+			m_spriteBatch->End();
+
+
+			context->RSSetViewports(1, &viewport);
+
 
 			if (*m_szStatus && m_showHud)
 			{
 				m_spriteBatch->Begin();
 
-				Vector3 up = Vector3::TransformNormal(Vector3::Up, m_view);
+				Vector3 up = Vector3::TransformNormal(Vector3::Up, *m_view);
 
 				WCHAR szCamera[256] = { 0 };
 				swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
-					m_lastCameraPos.x, m_lastCameraPos.y, m_lastCameraPos.z,
-					m_cameraFocus.x, m_cameraFocus.y, m_cameraFocus.z,
+					(*m_lastCameraPos).x, (*m_lastCameraPos).y, (*m_lastCameraPos).z,
+					(*m_cameraFocus).x, (*m_cameraFocus).y, (*m_cameraFocus).z,
 					up.x, up.y, up.z, XMConvertToDegrees(m_fov));
 
 				const WCHAR* mode = m_ccw ? L"Counter clockwise" : L"Clockwise";
@@ -870,12 +658,7 @@ void Game::Render()
 
 				WCHAR szState[128] = { 0 };
 				swprintf_s(szState, L"%ls", mode);
-
-				WCHAR szMode[64] = { 0 };
-				swprintf_s(szMode, L" %ls (Sensitivity: %8.4f)", (m_fpscamera) ? L"  FPS" : L"Orbit", m_sensitivity);
-
-				Vector2 modeLen = m_fontConsolas->MeasureString( szMode );
-
+				
 				WCHAR szTessellation[100] = { 0 };
 				const WCHAR* tessellationMode = m_tessellation ? L"Turn ON" : L"Turn OFF";
 				swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
@@ -898,6 +681,9 @@ void Game::Render()
 				WCHAR szDisplacementBias[100] = { 0 };
 				swprintf_s(szDisplacementBias, L"Displacement Bias: %8.4f", m_displacementBias);
 
+				WCHAR szDistance[100] = { 0 };
+				swprintf_s(szDistance, L"Distance: %8.4f", m_globalDistance);
+
 
 #if defined(_XBOX_ONE) && defined(_TITLE)
 				RECT rct = Viewport::ComputeTitleSafeArea(size.right, size.bottom);
@@ -913,16 +699,14 @@ void Game::Render()
 				m_fontConsolas->DrawString(m_spriteBatch.get(), m_szStatus, XMFLOAT2(0, 10), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
-				if (m_usingGamepad)
-				{
-					m_fontConsolas->DrawString(m_spriteBatch.get(), szMode, XMFLOAT2(size.right - modeLen.x, size.bottom - modeLen.y), m_uiColor);
-				}
+				
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 60), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 80), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 100), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 120), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 140), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 160), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 180), m_uiColor);
 #endif
 
 				m_spriteBatch->End();
@@ -946,11 +730,13 @@ void Game::Clear()
 	auto renderTarget = m_deviceResources->GetRenderTargetView();
 	auto depthStencil = m_deviceResources->GetDepthStencilView();
 
+	context->ClearRenderTargetView(m_secondTarget.Get(), m_clearColor);
+	context->ClearRenderTargetView(m_firstTarget.Get(), m_clearColor);
 	context->ClearRenderTargetView(renderTarget, m_clearColor);
 	context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	context->OMSetRenderTargets(1, &renderTarget, depthStencil);
-
+	
 	auto viewport = m_deviceResources->GetScreenViewport();
 	context->RSSetViewports(1, &viewport);
 }
@@ -962,7 +748,6 @@ void Game::OnActivated()
 {
 	m_keyboardTracker.Reset();
 	m_mouseButtonTracker.Reset();
-	m_gamepadButtonTracker.Reset();
 }
 
 void Game::OnDeactivated()
@@ -986,7 +771,6 @@ void Game::OnResuming()
 	m_timer.ResetElapsedTime();
 	m_keyboardTracker.Reset();
 	m_mouseButtonTracker.Reset();
-	m_gamepadButtonTracker.Reset();
 }
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
@@ -1033,11 +817,7 @@ void Game::CreateDeviceDependentResources()
 	m_fontComic = std::make_unique<SpriteFont>(device, L"comic.spritefont");
 
 	m_states = std::make_unique<CommonStates>(device);
-
-	//m_lineEffect = std::make_unique<BasicEffect>(device);
-	//m_lineEffect->SetVertexColorEnabled(true);
-
-
+	
 	// Create the constant buffers for the variables defined in the vertex shader.
 	D3D11_BUFFER_DESC constantBufferDesc;
 	ZeroMemory(&constantBufferDesc, sizeof(D3D11_BUFFER_DESC));
@@ -1062,8 +842,7 @@ void Game::CreateDeviceDependentResources()
 	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_NRM.dds", nullptr, m_normalTexture.GetAddressOf()));
 	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_SPEC.dds", nullptr, m_specularTexture.GetAddressOf()));
 	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_DISP.dds", nullptr, m_displacementTexture.GetAddressOf()));
-
-
+	
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
 	ZeroMemory(&sampDesc, sizeof(sampDesc));
@@ -1093,9 +872,7 @@ void Game::CreateDeviceDependentResources()
 
 	DX::ThrowIfFailed(device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc),
 		blob.data(), blob.size(), m_vertexInputLayout.ReleaseAndGetAddressOf()));
-
-	
-	
+			
 	blob = DX::ReadData(L"HullShader.cso");
 	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
 		nullptr, m_hullShader.ReleaseAndGetAddressOf()));
@@ -1109,20 +886,10 @@ void Game::CreateDeviceDependentResources()
 		nullptr, m_pixelShader.ReleaseAndGetAddressOf()));
 
 
+	blob = DX::ReadData(L"PixelShaderWireframe.cso");
+	DX::ThrowIfFailed(device->CreatePixelShader(blob.data(), blob.size(),
+		nullptr, m_pixelShaderWireframe.ReleaseAndGetAddressOf()));
 	
-	/*
-	{
-		void const* shaderByteCode;
-		size_t byteCodeLength;
-
-		m_lineEffect->GetVertexShaderBytecode(&shaderByteCode, &byteCodeLength);
-
-		DX::ThrowIfFailed(device->CreateInputLayout(VertexPositionColor::InputElements, VertexPositionColor::InputElementCount,
-			shaderByteCode, byteCodeLength, m_lineLayout.ReleaseAndGetAddressOf()));
-	}*/
-
-	//m_lineBatch = std::make_unique<PrimitiveBatch<VertexPositionColor>>(context);
-
 	m_world = Matrix::Identity;
 }
 
@@ -1130,11 +897,52 @@ void Game::CreateDeviceDependentResources()
 void Game::CreateWindowSizeDependentResources()
 {
 	auto size = m_deviceResources->GetOutputSize();
-
-	m_ballCamera.SetWindow(size.right, size.bottom);
-	m_ballModel.SetWindow(size.right, size.bottom);
-
 	CreateProjection();
+
+	auto device = m_deviceResources->GetD3DDevice();
+
+	D3D11_TEXTURE2D_DESC textureDesc;
+	ZeroMemory(&textureDesc, sizeof(textureDesc));
+
+	/*textureDesc.Width = 1920;
+	textureDesc.Height = 1080;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = 0;*/
+
+	m_deviceResources->GetRenderTarget()->GetDesc(&textureDesc);
+	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_firstTargetTexture.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_secondTargetTexture.ReleaseAndGetAddressOf()));
+
+
+
+	D3D11_RENDER_TARGET_VIEW_DESC renderTargetViewDesc;
+	renderTargetViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//DXGI_FORMAT_R32G32B32A32_FLOAT;
+	renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	renderTargetViewDesc.Texture2D.MipSlice = 0;
+
+	DX::ThrowIfFailed(device->CreateRenderTargetView(m_firstTargetTexture.Get(), &renderTargetViewDesc, m_firstTarget.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateRenderTargetView(m_secondTargetTexture.Get(), &renderTargetViewDesc, m_secondTarget.ReleaseAndGetAddressOf()));
+
+	// Create the shader-resource view
+	D3D11_SHADER_RESOURCE_VIEW_DESC srDesc;
+	ZeroMemory(&srDesc, sizeof(srDesc));
+
+	srDesc.Format = textureDesc.Format;
+	srDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srDesc.Texture2D.MostDetailedMip = 0;
+	srDesc.Texture2D.MipLevels = 1;
+
+	DX::ThrowIfFailed(device->CreateShaderResourceView(m_firstTargetTexture.Get(), &srDesc, m_firstTargetSh.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateShaderResourceView(m_secondTargetTexture.Get(), &srDesc, m_secondTargetSh.ReleaseAndGetAddressOf()));
 }
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
@@ -1145,15 +953,14 @@ void Game::OnDeviceLost()
 	m_fontComic.reset();
 	m_model.reset();
 	m_states.reset();
-	m_lineEffect.reset();
 	m_lineBatch.reset();
 
-	m_lineLayout.Reset();
 
 	m_vertexShader.Reset();
 	m_hullShader.Reset();
 	m_domainShader.Reset();
 	m_pixelShader.Reset();
+	m_pixelShaderWireframe.Reset();
 
 	m_diffuseTexture.Reset();
 	m_samplerState.Reset();
@@ -1173,7 +980,6 @@ void Game::LoadModel()
 	*m_szStatus = 0;
 	*m_szError = 0;
 	m_reloadModel = false;
-	m_modelRot = Quaternion::Identity;
 
 	if (!*m_szModelName)
 		return;
@@ -1203,15 +1009,15 @@ void Game::LoadModel()
 	{
 		if (_wcsicmp(ext, L".sdkmesh") == 0)
 		{
-			m_model = Model::CreateFromSDKMESH(device, m_szModelName, fx, m_lhcoords);
+			m_model = Model::CreateFromSDKMESH(device, m_szModelName, fx);// , m_lhcoords);
 		}
 		else if (_wcsicmp(ext, L".cmo") == 0)
 		{
-			m_model = Model::CreateFromCMO(device, m_szModelName, fx, !m_lhcoords);
+			m_model = Model::CreateFromCMO(device, m_szModelName, fx);// , !m_lhcoords);
 		}
 		else if (_wcsicmp(ext, L".vbo") == 0)
 		{
-			m_model = Model::CreateFromVBO(device, m_szModelName, nullptr, m_lhcoords);
+			m_model = Model::CreateFromVBO(device, m_szModelName, nullptr);// , m_lhcoords);
 		}
 		else
 		{
@@ -1274,113 +1080,24 @@ void Game::LoadModel()
 		{
 			swprintf_s(m_szStatus, L"Verts: %6Iu   Faces: %6Iu   Subsets: %6Iu", nverts, nfaces, nsubsets);
 		}
+
+		//m_world = Matrix::Identity;//Matrix::CreateRotationX(DegreesToRadians(-90.0f)) * Matrix::CreateRotationY(DegreesToRadians());
+		m_world = Matrix::CreateRotationX(DegreesToRadians(-90.0f));
 	}
 
 	CameraHome();
 }
 
-void Game::DrawGrid()
-{
-	auto ctx = m_deviceResources->GetD3DDeviceContext();
-	ctx->OMSetBlendState( m_states->Opaque(), nullptr, 0xFFFFFFFF );
-	ctx->OMSetDepthStencilState( m_states->DepthDefault(), 0 );
-	ctx->RSSetState( m_states->CullCounterClockwise() );
-
-	m_lineEffect->SetView(m_view);
-
-	m_lineEffect->Apply(ctx);
-
-	ctx->IASetInputLayout(m_lineLayout.Get());
-
-	m_lineBatch->Begin();
-
-	Vector3 xaxis(m_gridScale, 0.f, 0.f);
-	Vector3 yaxis(0.f, 0.f, m_gridScale);
-	Vector3 origin = Vector3::Zero;
-
-	XMVECTOR color = m_uiColor;
-
-	for( size_t i = 0; i <= m_gridDivs; ++i )
-	{
-		float fPercent = float(i) / float(m_gridDivs);
-		fPercent = ( fPercent * 2.0f ) - 1.0f;
-
-		Vector3 scale = xaxis * fPercent + origin;
-
-		VertexPositionColor v1( scale - yaxis, color );
-		VertexPositionColor v2( scale + yaxis, color );
-		m_lineBatch->DrawLine( v1, v2 );
-	}
-
-	for( size_t i = 0; i <= m_gridDivs; i++ )
-	{
-		float fPercent = float(i) / float(m_gridDivs);
-		fPercent = ( fPercent * 2.0f ) - 1.0f;
-
-		Vector3 scale = yaxis * fPercent + origin;
-
-		VertexPositionColor v1( scale - xaxis, color );
-		VertexPositionColor v2( scale + xaxis, color );
-		m_lineBatch->DrawLine( v1, v2 );
-	}
-
-	m_lineBatch->End();
-}
-
-void Game::DrawCross()
-{
-	auto ctx = m_deviceResources->GetD3DDeviceContext();
-	ctx->OMSetBlendState(m_states->Opaque(), nullptr, 0xFFFFFFFF);
-	ctx->OMSetDepthStencilState(m_states->DepthDefault(), 0);
-	ctx->RSSetState(m_states->CullCounterClockwise());
-
-	m_lineEffect->SetView(m_view);
-
-	m_lineEffect->Apply(ctx);
-
-	ctx->IASetInputLayout(m_lineLayout.Get());
-
-	XMVECTOR color = m_uiColor;
-
-	m_lineBatch->Begin();
-
-	float cross = m_distance / 100.f;
-
-	Vector3 xaxis(cross, 0.f, 0.f);
-	Vector3 yaxis(0.f, cross, 0.f);
-	Vector3 zaxis(0.f, 0.f, cross);
-
-	VertexPositionColor v1(m_cameraFocus - xaxis, color);
-	VertexPositionColor v2(m_cameraFocus + xaxis, color);
-
-	m_lineBatch->DrawLine(v1, v2);
-
-	VertexPositionColor v3(m_cameraFocus - yaxis, color);
-	VertexPositionColor v4(m_cameraFocus + yaxis, color);
-
-	m_lineBatch->DrawLine(v3, v4);
-
-	VertexPositionColor v5(m_cameraFocus - zaxis, color);
-	VertexPositionColor v6(m_cameraFocus + zaxis, color);
-
-	m_lineBatch->DrawLine(v5, v6);
-
-	m_lineBatch->End();
-}
-
 void Game::CameraHome()
 {
 	m_mouse->ResetScrollWheelValue();
-	m_zoom = 10.f;
 	m_fov = XM_PI / 4.f;
-	m_cameraRot = Quaternion::Identity;
-	m_ballCamera.Reset();
+	*m_cameraRot = Quaternion::Identity;
 
 	if (!m_model)
 	{
-		m_cameraFocus = Vector3::Zero;
-		m_distance = 10.f;
-		m_gridScale = 1.f;
+		*m_cameraFocus = Vector3::Zero;
+		m_distance = 100.f;
 	}
 	else
 	{
@@ -1412,18 +1129,16 @@ void Game::CameraHome()
 			sphere.Center = XMFLOAT3(0.f,0.f,0.f);
 			sphere.Radius = 10.f;
 		}
-
-		m_gridScale = sphere.Radius;
-
+		
 		m_distance = sphere.Radius * 2;
 
-		m_cameraFocus = sphere.Center;
+		*m_cameraFocus = sphere.Center;
 	}
 
-	Vector3 dir = Vector3::Transform((m_lhcoords) ? Vector3::Forward : Vector3::Backward, m_cameraRot);
-	Vector3 up = Vector3::Transform(Vector3::Up, m_cameraRot);
+	Vector3 dir = Vector3::Transform(Vector3::Backward, *m_cameraRot);
+	Vector3 up = Vector3::Transform(Vector3::Up, *m_cameraRot);
 
-	m_lastCameraPos = m_cameraFocus + (m_distance * m_zoom) * dir;
+	*m_lastCameraPos = *m_cameraFocus + m_distance * dir;
 }
 
 void Game::CycleBackgroundColor()
@@ -1449,26 +1164,40 @@ void Game::CreateProjection()
 {
 	auto size = m_deviceResources->GetOutputSize();
 
-	if (m_lhcoords)
-	{
-		m_proj = XMMatrixPerspectiveFovLH(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
-	}
-	else
-	{
-		m_proj = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
-	}
-
-	//m_lineEffect->SetProjection(m_proj);
-
-	// This is required for a correct projection matrix.
-	auto context = m_deviceResources->GetD3DDeviceContext();
-	context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj, 0, 0);
+	m_proj1 = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
+	m_proj2 = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
 }
 
-void Game::RotateView( Quaternion& q )
+
+void Game::DrawModel() 
 {
-	UNREFERENCED_PARAMETER(q);
-	// TODO -
+	auto context = m_deviceResources->GetD3DDeviceContext();
+	// Draw opaque parts
+	for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
+	{
+		auto mesh = it->get();
+		assert(mesh != 0);
+
+		for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
+		{
+			auto part = pit->get();
+
+			auto vb = part->vertexBuffer.Get();
+			UINT vbStride = part->vertexStride;
+			UINT vbOffset = 0;
+
+			context->IASetInputLayout(m_vertexInputLayout.Get());
+			context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
+			context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
+
+			context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+		}
+	}
+}
+
+float Game::DegreesToRadians(float degrees)
+{
+	return (degrees * M_PI) / 180.0f;
 }
 
 #if defined(_XBOX_ONE) && defined(_TITLE)
