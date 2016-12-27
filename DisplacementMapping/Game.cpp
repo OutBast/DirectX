@@ -68,6 +68,7 @@ Game::Game() :
 	m_leftCameraEnable(true),
 	m_selectFile(0),
 	m_firstFile(0),
+	m_selectHullShader(1),
 	m_tessellationFactor(1.0f),
 	m_displacementScale(0.0f),
 	m_displacementBias(0.0f),
@@ -320,6 +321,23 @@ void Game::Update(DX::StepTimer const& timer)
 
 		if (m_keyboardTracker.pressed.D1)
 		{
+			m_selectHullShader = 1;
+		}
+		if (m_keyboardTracker.pressed.D2)
+		{
+			m_selectHullShader = 2;
+		}
+		if (m_keyboardTracker.pressed.D3)
+		{
+			m_selectHullShader = 3;
+		}
+		if (m_keyboardTracker.pressed.D4)
+		{
+			m_selectHullShader = 4;
+		}
+
+		if (m_keyboardTracker.pressed.Tab)
+		{
 			m_leftCameraEnable = !m_leftCameraEnable;
 		}
 
@@ -425,9 +443,9 @@ void Game::Update(DX::StepTimer const& timer)
 			}
 		}
 
+		m_globalDistance = SimpleMath::Vector3::Distance(m_lastCameraPos1, Vector3(0.0f, 0.0f, 0.0f));
 		if (m_tessellation)
 		{
-			m_globalDistance = SimpleMath::Vector3::Distance(m_lastCameraPos1, Vector3(0.0f, 0.0f, 0.0f));
 			float distanceFactorToTess = m_globalDistance / MAX_TESSELLATION_DISTANCE;
 
 			m_tessellationFactor = (1 - distanceFactorToTess) * MAX_TESS_FACTOR + distanceFactorToTess;
@@ -529,7 +547,25 @@ void Game::Render()
 			context->PSSetConstantBuffers(0, 4, m_constantBuffers);
 
 			context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-			context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+
+			switch (m_selectHullShader)
+			{
+			case 1:
+				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+				break;
+			case 2:
+				context->HSSetShader(m_hullShaderFE.Get(), nullptr, 0);
+				break;
+			case 3:
+				context->HSSetShader(m_hullShaderInt.Get(), nullptr, 0);
+				break;
+			case 4:
+				context->HSSetShader(m_hullShaderPow.Get(), nullptr, 0);
+				break;
+			default:
+				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+				break;
+			}
 
 			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
 			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
@@ -584,7 +620,26 @@ void Game::Render()
 			context->PSSetConstantBuffers(0, 4, m_constantBuffers);
 
 			context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-			context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+
+			switch (m_selectHullShader)
+			{
+			case 1:
+				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+				break;
+			case 2:
+				context->HSSetShader(m_hullShaderFE.Get(), nullptr, 0);
+				break;
+			case 3:
+				context->HSSetShader(m_hullShaderInt.Get(), nullptr, 0);
+				break;
+			case 4:
+				context->HSSetShader(m_hullShaderPow.Get(), nullptr, 0);
+				break;
+			default:
+				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
+				break;
+			}
+
 
 			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
 			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
@@ -873,9 +928,21 @@ void Game::CreateDeviceDependentResources()
 	DX::ThrowIfFailed(device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc),
 		blob.data(), blob.size(), m_vertexInputLayout.ReleaseAndGetAddressOf()));
 			
-	blob = DX::ReadData(L"HullShader.cso");
+	blob = DX::ReadData(L"FractionalOddHS.cso");
 	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
 		nullptr, m_hullShader.ReleaseAndGetAddressOf()));
+
+	blob = DX::ReadData(L"FractionalEvenHS.cso");
+	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
+		nullptr, m_hullShaderFE.ReleaseAndGetAddressOf()));
+
+	blob = DX::ReadData(L"IntegerHS.cso");
+	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
+		nullptr, m_hullShaderInt.ReleaseAndGetAddressOf()));
+
+	blob = DX::ReadData(L"Pow2HS.cso");
+	DX::ThrowIfFailed(device->CreateHullShader(blob.data(), blob.size(),
+		nullptr, m_hullShaderPow.ReleaseAndGetAddressOf()));
 
 	blob = DX::ReadData(L"DomainShader.cso");
 	DX::ThrowIfFailed(device->CreateDomainShader(blob.data(), blob.size(),

@@ -111,6 +111,9 @@ private:
 	// Shaders
 	Microsoft::WRL::ComPtr<ID3D11VertexShader>		m_vertexShader;
 	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShader;
+	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderFE;
+	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderInt;
+	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderPow;
 	Microsoft::WRL::ComPtr<ID3D11DomainShader>		m_domainShader;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShader;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShaderWireframe;
@@ -192,6 +195,7 @@ private:
 	
 	int                                             m_selectFile;
 	int                                             m_firstFile;
+	int												m_selectHullShader;
 	std::vector<std::wstring>                       m_fileNames;
 
 	float											m_tessellationFactor;

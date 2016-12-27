@@ -61,9 +61,6 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="HullShader.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="PixelShader.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
@@ -74,6 +71,18 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="PixelShaderWireframe.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="FractionalEvenHS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="IntegerHS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Pow2HS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="FractionalOddHS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
