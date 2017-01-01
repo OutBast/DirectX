@@ -16,12 +16,14 @@
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="pch.h" />
-    <ClInclude Include="ArcBall.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="DeviceResourcesPC.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="ReadData.h" />
+    <ClInclude Include="Camera.h" />
+    <ClInclude Include="HUDRenderer.h" />
+    <ClInclude Include="ViewportRenderer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DeviceResourcesPC.cpp">
@@ -30,6 +32,9 @@
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="pch.cpp" />
+    <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="HUDRenderer.cpp" />
+    <ClCompile Include="ViewportRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="comic.spritefont">

@@ -5,7 +5,8 @@
 #pragma once
 
 #include "StepTimer.h"
-#include "ArcBall.h"
+#include "Camera.h"
+#include "ViewportRenderer.h"
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -66,13 +67,9 @@ private:
 	void CreateWindowSizeDependentResources();
 	
 	void LoadModel();
-
-	void CameraHome();
-
-	void CycleBackgroundColor();
-
-	void CreateProjection();
 	
+	void CycleBackgroundColor();
+		
 	void DrawModel();
 
 	float DegreesToRadians(float degrees);
@@ -99,14 +96,17 @@ private:
 
 	std::unique_ptr<DirectX::PrimitiveBatch<DirectX::VertexPositionColor>>  m_lineBatch;
 
-	D3D11_VIEWPORT			m_viewportAdaptive;
-	D3D11_VIEWPORT			m_viewportDetails;
-	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_firstTarget;
-	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_secondTarget;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_firstTargetSh;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_secondTargetSh;
-	Microsoft::WRL::ComPtr<ID3D11Texture2D> m_firstTargetTexture;
-	Microsoft::WRL::ComPtr<ID3D11Texture2D> m_secondTargetTexture;
+
+	ViewportRenderer								m_viewportLeft;
+	ViewportRenderer								m_viewportRight;
+	//D3D11_VIEWPORT			m_viewportAdaptive;
+	//D3D11_VIEWPORT			m_viewportDetails;
+	//Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_firstTarget;
+	//Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_secondTarget;
+	//Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_firstTargetSh;
+	//Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_secondTargetSh;
+	//Microsoft::WRL::ComPtr<ID3D11Texture2D> m_firstTargetTexture;
+	//Microsoft::WRL::ComPtr<ID3D11Texture2D> m_secondTargetTexture;
 
 	// Shaders
 	Microsoft::WRL::ComPtr<ID3D11VertexShader>		m_vertexShader;
@@ -137,7 +137,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_normalTexture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_specularTexture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>	m_displacementTexture;
-	Microsoft::WRL::ComPtr<ID3D11SamplerState>	m_samplerState;
+	Microsoft::WRL::ComPtr<ID3D11SamplerState>			m_samplerState;
 	
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;
@@ -146,36 +146,14 @@ private:
 	DirectX::Mouse::ButtonStateTracker              m_mouseButtonTracker;
 
 	DirectX::SimpleMath::Matrix                      m_world;
-	DirectX::SimpleMath::Matrix*                     m_view;
-	DirectX::SimpleMath::Matrix*                     m_proj;
 
-
-
-	DirectX::SimpleMath::Vector3*                   m_cameraFocus;
-	DirectX::SimpleMath::Vector3*                   m_lastCameraPos;
-	DirectX::SimpleMath::Quaternion*                m_cameraRot;
-	DirectX::SimpleMath::Quaternion*                m_viewRot;
-
-	DirectX::SimpleMath::Vector3                    m_cameraFocus1;
-	DirectX::SimpleMath::Vector3                    m_lastCameraPos1;
-	DirectX::SimpleMath::Quaternion                 m_cameraRot1;
-	DirectX::SimpleMath::Quaternion                 m_viewRot1;
-	DirectX::SimpleMath::Matrix                     m_view1;
-	DirectX::SimpleMath::Matrix                     m_proj1;
-
-	DirectX::SimpleMath::Vector3                    m_cameraFocus2;
-	DirectX::SimpleMath::Vector3                    m_lastCameraPos2;
-	DirectX::SimpleMath::Quaternion                 m_cameraRot2;
-	DirectX::SimpleMath::Quaternion                 m_viewRot2;
-	DirectX::SimpleMath::Matrix                     m_view2;
-	DirectX::SimpleMath::Matrix                     m_proj2;
+	Camera*											m_camera;
+	Camera											m_cameraLeft;
+	Camera											m_cameraRight;
 
 	DirectX::SimpleMath::Color                      m_clearColor;
 	DirectX::SimpleMath::Color                      m_uiColor;
 
-
-	float                                           m_fov;
-	float                                           m_distance;
 	float                                           m_farPlane;
 	float                                           m_sensitivity;
 
@@ -201,13 +179,5 @@ private:
 	float											m_tessellationFactor;
 	float											m_displacementScale;
 	float											m_displacementBias;
-
-	float*											m_pitch;
-	float*											m_yaw;
-	float											m_pitch1;
-	float											m_yaw1;
-	float											m_pitch2;
-	float											m_yaw2;
-	float m_globalDistance;
-	float m_speed;
+	float											m_globalDistance;
 };

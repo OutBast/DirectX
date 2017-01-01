@@ -52,9 +52,9 @@ float oldDisplacementBias = 0.0f;
 
 // Constructor.
 Game::Game() :
-	m_fov(XM_PI / 4.f),
-	m_distance(100.f),
-	m_speed(100.0f),
+	//m_fov(XM_PI / 4.f),
+	//m_distance(100.f),
+	//m_speed(100.0f),
 	m_farPlane(10000.f),
 	m_sensitivity(1.f),
 	m_showHud(true),
@@ -97,18 +97,10 @@ Game::Game() :
 	*m_szError = 0;
 
 	shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
-	m_view1 = Matrix::Identity;
-	m_view2 = Matrix::Identity;
-	m_proj1 = Matrix::Identity;
-	m_proj2 = Matrix::Identity;
-	m_view = &m_view1;
-	m_proj = &m_proj1;
-	m_pitch1 = 0.0f;
-	m_yaw1 = 0.0f;
-	m_pitch2 = 0.0f;
-	m_yaw2 = 0.0f;
-	m_pitch = &m_pitch1;
-	m_yaw = &m_yaw1;
+
+	m_cameraLeft = Camera();
+	m_cameraRight = Camera();
+	m_camera = &m_cameraLeft;
 }
 
 // Initialize the Direct3D resources required to run.
@@ -127,6 +119,10 @@ void Game::Initialize(HWND window, int width, int height)
 	m_deviceResources->SetWindow(window, width, height);
 	m_mouse->SetWindow(window);
 #endif
+
+
+	m_viewportLeft = ViewportRenderer();
+	m_viewportRight = ViewportRenderer();
 
 	m_deviceResources->CreateDeviceResources();
 	CreateDeviceDependentResources();
@@ -151,138 +147,27 @@ void Game::Tick()
 void Game::Update(DX::StepTimer const& timer)
 {
 
-	if (m_leftCameraEnable)
-	{
-		m_cameraFocus = &m_cameraFocus1;
-		m_lastCameraPos = &m_lastCameraPos1;
-		m_cameraRot = &m_cameraRot1;
-		m_viewRot = &m_viewRot1;
-		m_view = &m_view1;
-		m_proj = &m_proj1;
-		m_pitch = &m_pitch1;
-		m_yaw = &m_yaw1;
-	} 
-	else
-	{
-		m_cameraFocus = &m_cameraFocus2;
-		m_lastCameraPos = &m_lastCameraPos2;
-		m_cameraRot = &m_cameraRot2;
-		m_viewRot = &m_viewRot2;
-		m_view = &m_view2;
-		m_proj = &m_proj2;
-		m_pitch = &m_pitch2;
-		m_yaw = &m_yaw2;
-	}
-
 
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
 	if (m_reloadModel)
 		LoadModel();
 
-	float elapsedTime = float(timer.GetElapsedSeconds());
+	//float elapsedTime = float(timer.GetElapsedSeconds());
 
-	float handed = -1.f;//(m_lhcoords) ? 1.f : -1.f;
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
 
 		RECT size = m_deviceResources->GetOutputSize();
-		m_viewportAdaptive = Viewport(0.0f, 0.0f, size.right / 2.0f, size.bottom);
-		m_viewportDetails = Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom);
+		m_viewportLeft.m_viewport = Viewport(0.0f, 0.0f, size.right / 2.0f, size.bottom);
+		m_viewportRight.m_viewport = Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom);
 		
-		auto kb = m_keyboard->GetState();
 
-		// Camera movement
-		Vector3 move = Vector3::Zero;
+		m_camera->Update(timer, m_keyboard->Get(), m_mouse->Get());
 
-		float scale = m_speed;
-		if (kb.LeftShift || kb.RightShift)
-			scale *= 0.5f;
-
-		if (kb.Up)
-			move.y += scale;
-
-		if (kb.Down)
-			move.y -= scale;
-
-		if (kb.Right || kb.D)
-			move.x += scale;
-
-		if (kb.Left || kb.A)
-			move.x -= scale;
-
-		if (kb.PageUp || kb.W)
-			move.z += scale * handed;
-
-		if (kb.PageDown || kb.S)
-			move.z -= scale * handed;
-
-		if (kb.Q || kb.E)
-		{
-			if (kb.Q)
-			{
-				m_world *= Matrix::CreateRotationZ(0.5f * timer.GetElapsedSeconds());
-			}
-			else
-			{
-				m_world *= Matrix::CreateRotationZ(-0.5f * timer.GetElapsedSeconds());
-			}
-		}
-		
-		// Mouse controls
-		auto mouse = m_mouse->GetState();
-
-		if (mouse.positionMode == Mouse::MODE_RELATIVE)
-		{
-			Vector3 delta = Vector3(float(mouse.x), float(mouse.y), 0.f) * 0.5f * timer.GetElapsedSeconds();
-
-			*m_pitch += delta.y;
-			*m_yaw += delta.x;
-
-			// limit pitch to straight up or straight down
-			// with a little fudge-factor to avoid gimbal lock
-			float limit = XM_PI / 2.0f - 0.01f;
-			*m_pitch = std::max(-limit, *m_pitch);
-			*m_pitch = std::min(+limit, *m_pitch);
-
-			// keep longitude in sane range by wrapping
-			if (*m_yaw > XM_PI)
-			{
-				*m_yaw -= XM_PI * 2.0f;
-			}
-			else if (*m_yaw < -XM_PI)
-			{
-				*m_yaw += XM_PI * 2.0f;
-			}
-		}
-
-		m_mouse->SetMode(mouse.leftButton ? Mouse::MODE_RELATIVE : Mouse::MODE_ABSOLUTE);
-		
-		Matrix im;
-		(*m_view).Invert(im);
-		move = Vector3::TransformNormal(move, im);
-
-		Quaternion q = Quaternion::CreateFromYawPitchRoll(*m_yaw, *m_pitch, 0.f);
-		q.Normalize();
-		
-		q.Inverse(*m_cameraRot);
-		*m_cameraFocus += move * elapsedTime;
-
-		if (kb.Home)
-		{
-			CameraHome();
-		}
-		
-		// Update camera
-		Vector3 dir = Vector3::Transform(/*(m_lhcoords) ? Vector3::Forward :*/ Vector3::Backward, *m_cameraRot);
-		Vector3 up = Vector3::Transform(Vector3::Up, *m_cameraRot);
-
-		*m_lastCameraPos = *m_cameraFocus + m_distance * dir;
-
-		
-		*m_view = XMMatrixLookAtRH(*m_lastCameraPos, *m_cameraFocus, up);
 		context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
-				
+
+		auto kb = m_keyboard->GetState();
 		m_keyboardTracker.Update(kb);		
 
 		if (m_keyboardTracker.pressed.R)
@@ -339,6 +224,14 @@ void Game::Update(DX::StepTimer const& timer)
 		if (m_keyboardTracker.pressed.Tab)
 		{
 			m_leftCameraEnable = !m_leftCameraEnable;
+			if (m_leftCameraEnable)
+			{
+				m_camera = &m_cameraLeft;
+			}
+			else
+			{
+				m_camera = &m_cameraRight;
+			}
 		}
 
 
@@ -443,7 +336,7 @@ void Game::Update(DX::StepTimer const& timer)
 			}
 		}
 
-		m_globalDistance = SimpleMath::Vector3::Distance(m_lastCameraPos1, Vector3(0.0f, 0.0f, 0.0f));
+		m_globalDistance = SimpleMath::Vector3::Distance(m_cameraLeft.GetLastCameraPos(), Vector3(0.0f, 0.0f, 0.0f));
 		if (m_tessellation)
 		{
 			float distanceFactorToTess = m_globalDistance / MAX_TESSELLATION_DISTANCE;
@@ -538,8 +431,8 @@ void Game::Render()
 				context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
 			
 
-			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view1, 0, 0);
-			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj1, 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_cameraLeft.GetView(), 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_cameraLeft.GetProj(), 0, 0);
 
 			context->VSSetConstantBuffers(0, 4, m_constantBuffers);
 			context->HSSetConstantBuffers(0, 4, m_constantBuffers);				
@@ -575,7 +468,6 @@ void Game::Render()
 
 			auto viewport = m_deviceResources->GetScreenViewport();
 			context->RSSetViewports(1, &viewport);
-			//context->RSSetViewports(1, &m_viewportAdaptive);
 
 			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 			context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
@@ -585,8 +477,8 @@ void Game::Render()
 
 			auto renderTarget = m_deviceResources->GetRenderTargetView();
 			auto depthStencil = m_deviceResources->GetDepthStencilView();
+			context->OMSetRenderTargets(1, m_viewportLeft.m_targetView.GetAddressOf(), depthStencil);
 			//context->OMSetRenderTargets(1, m_firstTarget.GetAddressOf(), depthStencil);
-			context->OMSetRenderTargets(1, m_firstTarget.GetAddressOf(), depthStencil);
 			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
 			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
@@ -610,8 +502,8 @@ void Game::Render()
 
 			context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_view2, 0, 0);
-			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_proj2, 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_cameraRight.GetView(), 0, 0);
+			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_cameraRight.GetProj(), 0, 0);
 			
 
 			context->VSSetConstantBuffers(0, 4, m_constantBuffers);
@@ -652,8 +544,8 @@ void Game::Render()
 			context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
 			context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
 			context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
-
-			context->OMSetRenderTargets(1, m_secondTarget.GetAddressOf(), depthStencil);
+			context->OMSetRenderTargets(1, m_viewportRight.m_targetView.GetAddressOf(), depthStencil);
+			//context->OMSetRenderTargets(1, m_secondTarget.GetAddressOf(), depthStencil);
 			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
 			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
@@ -682,13 +574,13 @@ void Game::Render()
 
 
 			m_spriteBatch->Begin();
-			context->RSSetViewports(1, &m_viewportAdaptive);
-			m_spriteBatch->Draw(m_firstTargetSh.Get(), firstRect);
+			context->RSSetViewports(1, &m_viewportLeft.m_viewport);
+			m_spriteBatch->Draw(m_viewportLeft.m_shaderResourceView.Get(), firstRect);
 			m_spriteBatch->End();
 
 			m_spriteBatch->Begin();
-			context->RSSetViewports(1, &m_viewportDetails);
-			m_spriteBatch->Draw(m_secondTargetSh.Get(), firstRect);
+			context->RSSetViewports(1, &m_viewportRight.m_viewport);
+			m_spriteBatch->Draw(m_viewportRight.m_shaderResourceView.Get(), firstRect);
 			m_spriteBatch->End();
 
 
@@ -699,13 +591,13 @@ void Game::Render()
 			{
 				m_spriteBatch->Begin();
 
-				Vector3 up = Vector3::TransformNormal(Vector3::Up, *m_view);
+				Vector3 up = Vector3::TransformNormal(Vector3::Up, m_camera->GetView());
 
 				WCHAR szCamera[256] = { 0 };
 				swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
-					(*m_lastCameraPos).x, (*m_lastCameraPos).y, (*m_lastCameraPos).z,
-					(*m_cameraFocus).x, (*m_cameraFocus).y, (*m_cameraFocus).z,
-					up.x, up.y, up.z, XMConvertToDegrees(m_fov));
+					(m_camera->GetLastCameraPos()).x, (m_camera->GetLastCameraPos()).y, (m_camera->GetLastCameraPos()).z,
+					(m_camera->GetCameraFocus()).x, (m_camera->GetCameraFocus()).y, (m_camera->GetCameraFocus()).z,
+					up.x, up.y, up.z, XMConvertToDegrees(m_camera->GetFov()));
 
 				const WCHAR* mode = m_ccw ? L"Counter clockwise" : L"Clockwise";
 				if (m_wireframe)
@@ -713,7 +605,26 @@ void Game::Render()
 
 				WCHAR szState[128] = { 0 };
 				swprintf_s(szState, L"%ls", mode);
-				
+
+				WCHAR szSelectHullShader[100] = { 0 };
+				const WCHAR* selectHullShaderText;
+				switch (m_selectHullShader)
+				{
+				case 1:
+					selectHullShaderText = L"Partitioning ODD";
+					break;
+				case 2:
+					selectHullShaderText = L"Partitioning EVEN";
+					break;
+				case 3:
+					selectHullShaderText = L"Partitioning Integer";
+					break;
+				case 4:
+					selectHullShaderText = L"Partitioning Pow2";
+					break;
+				}
+				swprintf_s(szSelectHullShader, L"Tessellation Mode: %ls", selectHullShaderText);
+
 				WCHAR szTessellation[100] = { 0 };
 				const WCHAR* tessellationMode = m_tessellation ? L"Turn ON" : L"Turn OFF";
 				swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
@@ -755,13 +666,14 @@ void Game::Render()
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
 				m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
 				
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 60), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 80), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 100), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 120), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 140), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 160), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 180), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
+				m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
 #endif
 
 				m_spriteBatch->End();
@@ -785,8 +697,8 @@ void Game::Clear()
 	auto renderTarget = m_deviceResources->GetRenderTargetView();
 	auto depthStencil = m_deviceResources->GetDepthStencilView();
 
-	context->ClearRenderTargetView(m_secondTarget.Get(), m_clearColor);
-	context->ClearRenderTargetView(m_firstTarget.Get(), m_clearColor);
+	context->ClearRenderTargetView(m_viewportLeft.m_targetView.Get(), m_clearColor);
+	context->ClearRenderTargetView(m_viewportRight.m_targetView.Get(), m_clearColor);
 	context->ClearRenderTargetView(renderTarget, m_clearColor);
 	context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
@@ -922,9 +834,7 @@ void Game::CreateDeviceDependentResources()
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
-
-	//device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc), blob.data(), blob.size(), &m_vertexInputLayout);
-
+	
 	DX::ThrowIfFailed(device->CreateInputLayout(vertexLayoutDesc, _countof(vertexLayoutDesc),
 		blob.data(), blob.size(), m_vertexInputLayout.ReleaseAndGetAddressOf()));
 			
@@ -964,40 +874,28 @@ void Game::CreateDeviceDependentResources()
 void Game::CreateWindowSizeDependentResources()
 {
 	auto size = m_deviceResources->GetOutputSize();
-	CreateProjection();
+	m_cameraLeft.CreateProjection(&size);
+	m_cameraRight.CreateProjection(&size);
 
 	auto device = m_deviceResources->GetD3DDevice();
 
 	D3D11_TEXTURE2D_DESC textureDesc;
 	ZeroMemory(&textureDesc, sizeof(textureDesc));
-
-	/*textureDesc.Width = 1920;
-	textureDesc.Height = 1080;
-	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 1;
-	textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = 0;*/
-
+	
 	m_deviceResources->GetRenderTarget()->GetDesc(&textureDesc);
 	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
-	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_firstTargetTexture.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_secondTargetTexture.ReleaseAndGetAddressOf()));
-
-
+	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportLeft.m_tagetTexture.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportRight.m_tagetTexture.ReleaseAndGetAddressOf()));
 
 	D3D11_RENDER_TARGET_VIEW_DESC renderTargetViewDesc;
-	renderTargetViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;//DXGI_FORMAT_R32G32B32A32_FLOAT;
+	renderTargetViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 	renderTargetViewDesc.Texture2D.MipSlice = 0;
 
-	DX::ThrowIfFailed(device->CreateRenderTargetView(m_firstTargetTexture.Get(), &renderTargetViewDesc, m_firstTarget.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateRenderTargetView(m_secondTargetTexture.Get(), &renderTargetViewDesc, m_secondTarget.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportLeft.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportLeft.m_targetView.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportRight.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportRight.m_targetView.ReleaseAndGetAddressOf()));
 
 	// Create the shader-resource view
 	D3D11_SHADER_RESOURCE_VIEW_DESC srDesc;
@@ -1008,8 +906,8 @@ void Game::CreateWindowSizeDependentResources()
 	srDesc.Texture2D.MostDetailedMip = 0;
 	srDesc.Texture2D.MipLevels = 1;
 
-	DX::ThrowIfFailed(device->CreateShaderResourceView(m_firstTargetTexture.Get(), &srDesc, m_firstTargetSh.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateShaderResourceView(m_secondTargetTexture.Get(), &srDesc, m_secondTargetSh.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportLeft.m_tagetTexture.Get(), &srDesc, m_viewportLeft.m_shaderResourceView.ReleaseAndGetAddressOf()));
+	DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportRight.m_tagetTexture.Get(), &srDesc, m_viewportRight.m_shaderResourceView.ReleaseAndGetAddressOf()));
 }
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
@@ -1148,64 +1046,10 @@ void Game::LoadModel()
 			swprintf_s(m_szStatus, L"Verts: %6Iu   Faces: %6Iu   Subsets: %6Iu", nverts, nfaces, nsubsets);
 		}
 
-		//m_world = Matrix::Identity;//Matrix::CreateRotationX(DegreesToRadians(-90.0f)) * Matrix::CreateRotationY(DegreesToRadians());
 		m_world = Matrix::CreateRotationX(DegreesToRadians(-90.0f));
 	}
 
-	CameraHome();
-}
-
-void Game::CameraHome()
-{
-	m_mouse->ResetScrollWheelValue();
-	m_fov = XM_PI / 4.f;
-	*m_cameraRot = Quaternion::Identity;
-
-	if (!m_model)
-	{
-		*m_cameraFocus = Vector3::Zero;
-		m_distance = 100.f;
-	}
-	else
-	{
-		BoundingSphere sphere;
-		BoundingBox box;
-
-		for( auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it )
-		{
-			if ( it == m_model->meshes.cbegin() )
-			{
-				sphere = (*it)->boundingSphere;
-				box = (*it)->boundingBox;
-			}
-			else
-			{
-				BoundingSphere::CreateMerged( sphere, sphere, (*it)->boundingSphere );
-				BoundingBox::CreateMerged( box, box, (*it)->boundingBox );
-			}
-		}
-
-		if ( sphere.Radius < 1.f )
-		{
-			sphere.Center = box.Center;
-			sphere.Radius = std::max( box.Extents.x, std::max( box.Extents.y, box.Extents.z ) );
-		}
-
-		if ( sphere.Radius < 1.f )
-		{
-			sphere.Center = XMFLOAT3(0.f,0.f,0.f);
-			sphere.Radius = 10.f;
-		}
-		
-		m_distance = sphere.Radius * 2;
-
-		*m_cameraFocus = sphere.Center;
-	}
-
-	Vector3 dir = Vector3::Transform(Vector3::Backward, *m_cameraRot);
-	Vector3 up = Vector3::Transform(Vector3::Up, *m_cameraRot);
-
-	*m_lastCameraPos = *m_cameraFocus + m_distance * dir;
+	m_camera->CameraHome(m_mouse.get(), m_model.get());
 }
 
 void Game::CycleBackgroundColor()
@@ -1227,13 +1071,6 @@ void Game::CycleBackgroundColor()
 	}
 }
 
-void Game::CreateProjection()
-{
-	auto size = m_deviceResources->GetOutputSize();
-
-	m_proj1 = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
-	m_proj2 = Matrix::CreatePerspectiveFieldOfView(m_fov, float(size.right) / float(size.bottom), 0.1f, m_farPlane);
-}
 
 
 void Game::DrawModel() 
