@@ -163,25 +163,27 @@
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DeviceResourcesPC.h" />
     <ClInclude Include="Game.h" />
-    <ClInclude Include="HUDRenderer.h" />
+    <ClInclude Include="ModelResources.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ReadData.h" />
     <ClInclude Include="StepTimer.h" />
-    <ClInclude Include="ViewportRenderer.h" />
+    <ClInclude Include="TessellationShaders.h" />
+    <ClInclude Include="ViewportRendererData.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="DeviceResourcesPC.cpp" />
     <ClCompile Include="Game.cpp" />
-    <ClCompile Include="HUDRenderer.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="ModelResources.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="ViewportRenderer.cpp" />
+    <ClCompile Include="TessellationShaders.cpp" />
+    <ClCompile Include="ViewportRendererData.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc" />

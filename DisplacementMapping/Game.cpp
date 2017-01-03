@@ -43,8 +43,6 @@ struct VertexPosColor
 	XMFLOAT3 Color;
 };
 
-//Vector3 startCameraPosition = Vector3(0.0f, 0.0f, 500.0f)
-
 XMFLOAT4 shaderFactors;
 float oldTessellationFactor = 1.0f;
 float oldDisplacementScale = 0.0f;
@@ -52,16 +50,9 @@ float oldDisplacementBias = 0.0f;
 
 // Constructor.
 Game::Game() :
-	//m_fov(XM_PI / 4.f),
-	//m_distance(100.f),
-	//m_speed(100.0f),
-	m_farPlane(10000.f),
-	m_sensitivity(1.f),
 	m_showHud(true),
 	m_wireframe(false),
 	m_wireframeWithMaterial(true),
-	m_ccw(false),
-	m_reloadModel(false),
 	m_tessellation(false),
 	m_displacementMap(false),
 	m_backFaceCulling(false),
@@ -73,10 +64,6 @@ Game::Game() :
 	m_displacementScale(0.0f),
 	m_displacementBias(0.0f),
 	m_globalDistance(0.0f),
-	m_diffuseTexture(nullptr),
-	m_normalTexture(nullptr),
-	m_specularTexture(nullptr),
-	m_displacementTexture(nullptr),
 	m_samplerState(nullptr)
 {
 #ifdef GAMMA_CORRECT_RENDERING
@@ -89,18 +76,15 @@ Game::Game() :
 	m_deviceResources->RegisterDeviceNotify(this);
 #endif
 
-	m_clearColor = Colors::Black.v;
-	m_uiColor = Colors::Yellow;
-
-	*m_szModelName = 0;
-	*m_szStatus = 0;
-	*m_szError = 0;
-
+	m_clearColor = c_CornflowerBlue.v;
+	m_uiColor = Colors::Black;
+	
 	shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
 
 	m_cameraLeft = Camera();
 	m_cameraRight = Camera();
 	m_camera = &m_cameraLeft;
+
 }
 
 // Initialize the Direct3D resources required to run.
@@ -121,14 +105,18 @@ void Game::Initialize(HWND window, int width, int height)
 #endif
 
 
-	m_viewportLeft = ViewportRenderer();
-	m_viewportRight = ViewportRenderer();
+	m_viewportLeft = ViewportRendererData();
+	m_viewportRight = ViewportRendererData();
 
 	m_deviceResources->CreateDeviceResources();
 	CreateDeviceDependentResources();
 
 	m_deviceResources->CreateWindowSizeDependentResources();
 	CreateWindowSizeDependentResources();
+
+
+	main_model = new ModelResources(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext()); 
+	main_model->LoadDefaultTextures();
 }
 
 #pragma region Frame Update
@@ -146,14 +134,9 @@ void Game::Tick()
 // Updates the world
 void Game::Update(DX::StepTimer const& timer)
 {
-
-
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
-	if (m_reloadModel)
-		LoadModel();
-
-	//float elapsedTime = float(timer.GetElapsedSeconds());
+	main_model->ReloadModelResourcesIfNeeded();
 
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
@@ -165,7 +148,7 @@ void Game::Update(DX::StepTimer const& timer)
 
 		m_camera->Update(timer, m_keyboard->Get(), m_mouse->Get());
 
-		context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &m_world, 0, 0);
+		context->UpdateSubresource(m_constantBuffers[CB_Object], 0, nullptr, &main_model->m_world, 0, 0);
 
 		auto kb = m_keyboard->GetState();
 		m_keyboardTracker.Update(kb);		
@@ -175,20 +158,38 @@ void Game::Update(DX::StepTimer const& timer)
 
 		if (m_keyboardTracker.pressed.F)
 			m_wireframeWithMaterial = !m_wireframeWithMaterial;
-
-		if (m_keyboardTracker.pressed.T && !m_wireframe)
-			m_ccw = !m_ccw;
-
+		
 		if (m_keyboardTracker.pressed.Z)
 			m_showHud = !m_showHud;
 
 		if (m_keyboardTracker.pressed.C)
 			CycleBackgroundColor();
 
-		if (m_keyboardTracker.pressed.O)
+		if (m_keyboardTracker.pressed.Y)
 		{
 			PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 0);
 		}
+
+		if (m_keyboardTracker.pressed.U)
+		{
+			PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 1);
+		}
+
+		if (m_keyboardTracker.pressed.I)
+		{
+			PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 2);
+		}
+
+		if (m_keyboardTracker.pressed.O)
+		{
+			PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 3);
+		}
+
+		if (m_keyboardTracker.pressed.P)
+		{
+			PostMessage(m_deviceResources->GetWindowHandle(), WM_USER, 0, 4);
+		}
+
 
 		if (m_keyboardTracker.pressed.F1)
 		{
@@ -234,7 +235,6 @@ void Game::Update(DX::StepTimer const& timer)
 			}
 		}
 
-
 		if (m_keyboardTracker.pressed.F2)
 		{
 			m_displacementMap = !m_displacementMap;
@@ -270,7 +270,6 @@ void Game::Update(DX::StepTimer const& timer)
 					m_tessellationFactor = MAX_TESS_FACTOR;
 				}
 			}
-
 
 			if (kb.B)
 			{
@@ -398,17 +397,17 @@ void Game::Render()
 	}
 	else
 	{
-		if (!m_model)
+		if (!main_model->m_model)
 		{
 			m_spriteBatch->Begin();
 
-			if (*m_szError)
+			if (*main_model->m_szError)
 			{
-				m_fontComic->DrawString(m_spriteBatch.get(), m_szError, XMFLOAT2(100, 100), Colors::Red);
+				m_fontComic->DrawString(m_spriteBatch.get(), main_model->m_szError, XMFLOAT2(100, 100), Colors::Red);
 			}
 			else
 			{
-				m_fontComic->DrawString(m_spriteBatch.get(), L"No model is loaded\nPress 'O' to load a model from disk", XMFLOAT2(100, 100), Colors::Red);
+				m_fontComic->DrawString(m_spriteBatch.get(), L"No model is loaded\nPress 'Y' to load a model from disk", XMFLOAT2(100, 100), Colors::Red);
 			}
 
 			m_spriteBatch->End();
@@ -417,19 +416,14 @@ void Game::Render()
 		{
 			auto context = m_deviceResources->GetD3DDeviceContext();
 
-			// Set sampler state.
-			ID3D11SamplerState* samplers[] =
-			{
-				m_states->LinearWrap(),
-				m_states->LinearWrap(),
-			};
-
 			// Set Rasterizer State
 			if (m_wireframe)
 				context->RSSetState(m_states->Wireframe());
 			else
-				context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+				context->RSSetState(m_states->CullClockwise());
 			
+
+			context->IASetInputLayout(m_vertexInputLayout.Get());
 
 			context->UpdateSubresource(m_constantBuffers[CB_Frame], 0, nullptr, &m_cameraLeft.GetView(), 0, 0);
 			context->UpdateSubresource(m_constantBuffers[CB_Appliation], 0, nullptr, &m_cameraLeft.GetProj(), 0, 0);
@@ -462,7 +456,7 @@ void Game::Render()
 
 			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
 			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-			context->DSSetShaderResources(0, 1, m_displacementTexture.GetAddressOf());
+			context->DSSetShaderResources(0, 1, main_model->m_displacementTexture.GetAddressOf());
 				
 			context->GSSetShader(nullptr, nullptr, 0);
 
@@ -471,33 +465,32 @@ void Game::Render()
 
 			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 			context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-			context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-			context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
-			context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
+			context->PSSetShaderResources(0, 1, main_model->m_diffuseTexture.GetAddressOf());
+			context->PSSetShaderResources(1, 1, main_model->m_normalTexture.GetAddressOf());
+			context->PSSetShaderResources(2, 1, main_model->m_specularTexture.GetAddressOf());
 
 			auto renderTarget = m_deviceResources->GetRenderTargetView();
 			auto depthStencil = m_deviceResources->GetDepthStencilView();
 			context->OMSetRenderTargets(1, m_viewportLeft.m_targetView.GetAddressOf(), depthStencil);
-			//context->OMSetRenderTargets(1, m_firstTarget.GetAddressOf(), depthStencil);
 			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
 			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
-			DrawModel();
+			main_model->DrawModel(m_vertexInputLayout.Get());
 
 			if (m_wireframeWithMaterial)
 			{
 				context->RSSetState(m_states->Wireframe());
 				context->PSSetShader(m_pixelShaderWireframe.Get(), nullptr, 0);
 				context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-				context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-				DrawModel();
+				context->PSSetShaderResources(0, 1, main_model->m_diffuseTexture.GetAddressOf());
+				main_model->DrawModel(m_vertexInputLayout.Get());
 			}
 			
 			// Set Rasterizer State
 			if (m_wireframe)
 				context->RSSetState(m_states->Wireframe());
 			else
-				context->RSSetState(m_ccw ? m_states->CullCounterClockwise() : m_states->CullClockwise());
+				context->RSSetState(m_states->CullClockwise());
 
 
 			context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
@@ -531,33 +524,31 @@ void Game::Render()
 				context->HSSetShader(m_hullShader.Get(), nullptr, 0);
 				break;
 			}
-
-
+			
 			context->DSSetShader(m_domainShader.Get(), nullptr, 0);
 			context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-			context->DSSetShaderResources(0, 1, m_displacementTexture.GetAddressOf());
+			context->DSSetShaderResources(0, 1, main_model->m_displacementTexture.GetAddressOf());
 
 			context->GSSetShader(nullptr, nullptr, 0);
 			
 			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 			context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-			context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-			context->PSSetShaderResources(1, 1, m_normalTexture.GetAddressOf());
-			context->PSSetShaderResources(2, 1, m_specularTexture.GetAddressOf());
+			context->PSSetShaderResources(0, 1, main_model->m_diffuseTexture.GetAddressOf());
+			context->PSSetShaderResources(1, 1, main_model->m_normalTexture.GetAddressOf());
+			context->PSSetShaderResources(2, 1, main_model->m_specularTexture.GetAddressOf());
 			context->OMSetRenderTargets(1, m_viewportRight.m_targetView.GetAddressOf(), depthStencil);
-			//context->OMSetRenderTargets(1, m_secondTarget.GetAddressOf(), depthStencil);
 			context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
 			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
-			DrawModel();
+			main_model->DrawModel(m_vertexInputLayout.Get());
 
 			if (m_wireframeWithMaterial)
 			{
 				context->RSSetState(m_states->Wireframe());
 				context->PSSetShader(m_pixelShaderWireframe.Get(), nullptr, 0);
 				context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-				context->PSSetShaderResources(0, 1, m_diffuseTexture.GetAddressOf());
-				DrawModel();
+				context->PSSetShaderResources(0, 1, main_model->m_diffuseTexture.GetAddressOf());
+				main_model->DrawModel(m_vertexInputLayout.Get());
 			}
 
 			context->HSSetShader(nullptr, nullptr, 0);
@@ -565,13 +556,11 @@ void Game::Render()
 			
 			context->OMSetRenderTargets(1, &renderTarget, nullptr);
 
-
 			RECT firstRect;
 			firstRect.left = static_cast<LONG>(0);
 			firstRect.top = static_cast<LONG>(0);
 			firstRect.right = static_cast<LONG>(1920);
 			firstRect.bottom = static_cast<LONG>(1080);
-
 
 			m_spriteBatch->Begin();
 			context->RSSetViewports(1, &m_viewportLeft.m_viewport);
@@ -583,101 +572,9 @@ void Game::Render()
 			m_spriteBatch->Draw(m_viewportRight.m_shaderResourceView.Get(), firstRect);
 			m_spriteBatch->End();
 
-
 			context->RSSetViewports(1, &viewport);
 
-
-			if (*m_szStatus && m_showHud)
-			{
-				m_spriteBatch->Begin();
-
-				Vector3 up = Vector3::TransformNormal(Vector3::Up, m_camera->GetView());
-
-				WCHAR szCamera[256] = { 0 };
-				swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
-					(m_camera->GetLastCameraPos()).x, (m_camera->GetLastCameraPos()).y, (m_camera->GetLastCameraPos()).z,
-					(m_camera->GetCameraFocus()).x, (m_camera->GetCameraFocus()).y, (m_camera->GetCameraFocus()).z,
-					up.x, up.y, up.z, XMConvertToDegrees(m_camera->GetFov()));
-
-				const WCHAR* mode = m_ccw ? L"Counter clockwise" : L"Clockwise";
-				if (m_wireframe)
-					mode = L"Wireframe";
-
-				WCHAR szState[128] = { 0 };
-				swprintf_s(szState, L"%ls", mode);
-
-				WCHAR szSelectHullShader[100] = { 0 };
-				const WCHAR* selectHullShaderText;
-				switch (m_selectHullShader)
-				{
-				case 1:
-					selectHullShaderText = L"Partitioning ODD";
-					break;
-				case 2:
-					selectHullShaderText = L"Partitioning EVEN";
-					break;
-				case 3:
-					selectHullShaderText = L"Partitioning Integer";
-					break;
-				case 4:
-					selectHullShaderText = L"Partitioning Pow2";
-					break;
-				}
-				swprintf_s(szSelectHullShader, L"Tessellation Mode: %ls", selectHullShaderText);
-
-				WCHAR szTessellation[100] = { 0 };
-				const WCHAR* tessellationMode = m_tessellation ? L"Turn ON" : L"Turn OFF";
-				swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
-
-				WCHAR szDisplacement[100] = { 0 };
-				const WCHAR* displacementMode = m_displacementMap ? L"Turn ON" : L"Turn OFF";
-				swprintf_s(szDisplacement, L"Displacement Mapping: %ls", displacementMode);
-
-				WCHAR szBacFaceCulling[100] = { 0 };
-				const WCHAR* backFaceCullingMode = m_backFaceCulling ? L"Turn ON" : L"Turn OFF";
-				swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
-
-
-				WCHAR szTessellationFactor[100] = { 0 };
-				swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessellationFactor);
-
-				WCHAR szDisplacementScale[100] = { 0 };
-				swprintf_s(szDisplacementScale, L"Displacement Scale: %8.4f", m_displacementScale);
-
-				WCHAR szDisplacementBias[100] = { 0 };
-				swprintf_s(szDisplacementBias, L"Displacement Bias: %8.4f", m_displacementBias);
-
-				WCHAR szDistance[100] = { 0 };
-				swprintf_s(szDistance, L"Distance: %8.4f", m_globalDistance);
-
-
-#if defined(_XBOX_ONE) && defined(_TITLE)
-				RECT rct = Viewport::ComputeTitleSafeArea(size.right, size.bottom);
-
-				m_fontConsolas->DrawString(m_spriteBatch.get(), m_szStatus, XMFLOAT2(float(rct.left), float(rct.top)), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(float(rct.left), float(rct.top + 20)), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(float(rct.left), float(rct.top + 40)), m_uiColor);
-				if (m_usingGamepad)
-				{
-					m_fontConsolas->DrawString(m_spriteBatch.get(), szMode, XMFLOAT2(float(rct.right) - modeLen.x, float(rct.bottom) - modeLen.y), m_uiColor);
-				}
-#else
-				m_fontConsolas->DrawString(m_spriteBatch.get(), m_szStatus, XMFLOAT2(0, 10), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
-				
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
-				m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
-#endif
-
-				m_spriteBatch->End();
-			}
+			RenderHUD();
 		}
 	}
 
@@ -750,15 +647,6 @@ void Game::OnWindowSizeChanged(int width, int height)
 }
 #endif
 
-void Game::OnFileOpen(const WCHAR* filename)
-{
-	if (!filename)
-		return;
-
-	wcscpy_s(m_szModelName, filename);
-	m_reloadModel = true;
-}
-
 // Properties
 void Game::GetDefaultSize(int& width, int& height) const
 {
@@ -803,12 +691,6 @@ void Game::CreateDeviceDependentResources()
 
 	constantBufferDesc.ByteWidth = sizeof(XMFLOAT4);
 	device->CreateBuffer(&constantBufferDesc, nullptr, &m_constantBuffers[CB_TessellationFactor]);
-
-	// Load the Textures
-	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_COLOR.dds", nullptr, m_diffuseTexture.GetAddressOf()));
-	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_NRM.dds", nullptr, m_normalTexture.GetAddressOf()));
-	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_SPEC.dds", nullptr, m_specularTexture.GetAddressOf()));
-	DX::ThrowIfFailed(CreateDDSTextureFromFile(device, L"Media\\Tiny\\Tiny_skin_DISP.dds", nullptr, m_displacementTexture.GetAddressOf()));
 	
 	// Create the sample state
 	D3D11_SAMPLER_DESC sampDesc;
@@ -866,8 +748,6 @@ void Game::CreateDeviceDependentResources()
 	blob = DX::ReadData(L"PixelShaderWireframe.cso");
 	DX::ThrowIfFailed(device->CreatePixelShader(blob.data(), blob.size(),
 		nullptr, m_pixelShaderWireframe.ReleaseAndGetAddressOf()));
-	
-	m_world = Matrix::Identity;
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
@@ -916,10 +796,8 @@ void Game::OnDeviceLost()
 	m_spriteBatch.reset();
 	m_fontConsolas.reset();
 	m_fontComic.reset();
-	m_model.reset();
 	m_states.reset();
-	m_lineBatch.reset();
-
+	main_model->Reset();
 
 	m_vertexShader.Reset();
 	m_hullShader.Reset();
@@ -927,7 +805,6 @@ void Game::OnDeviceLost()
 	m_pixelShader.Reset();
 	m_pixelShaderWireframe.Reset();
 
-	m_diffuseTexture.Reset();
 	m_samplerState.Reset();
 }
 
@@ -938,119 +815,6 @@ void Game::OnDeviceRestored()
 	CreateWindowSizeDependentResources();
 }
 #endif
-
-void Game::LoadModel()
-{
-	m_model.reset();
-	*m_szStatus = 0;
-	*m_szError = 0;
-	m_reloadModel = false;
-
-	if (!*m_szModelName)
-		return;
-
-	WCHAR drive[ _MAX_DRIVE ];
-	WCHAR path[ MAX_PATH ];
-	WCHAR ext[ _MAX_EXT ];
-	WCHAR fname[ _MAX_FNAME ];
-	_wsplitpath_s( m_szModelName, drive, _MAX_DRIVE, path, MAX_PATH, fname, _MAX_FNAME, ext, _MAX_EXT );
-
-	auto device = m_deviceResources->GetD3DDevice();
-
-	EffectFactory fx(device);
-
-#ifdef GAMMA_CORRECT_RENDERING
-	fx.EnableForceSRGB(true);
-#endif
-
-	if (*drive || *path)
-	{
-		WCHAR dir[MAX_PATH] = { 0 };
-		_wmakepath_s(dir, drive, path, nullptr, nullptr);
-		fx.SetDirectory(dir);
-	}
-
-	try
-	{
-		if (_wcsicmp(ext, L".sdkmesh") == 0)
-		{
-			m_model = Model::CreateFromSDKMESH(device, m_szModelName, fx);// , m_lhcoords);
-		}
-		else if (_wcsicmp(ext, L".cmo") == 0)
-		{
-			m_model = Model::CreateFromCMO(device, m_szModelName, fx);// , !m_lhcoords);
-		}
-		else if (_wcsicmp(ext, L".vbo") == 0)
-		{
-			m_model = Model::CreateFromVBO(device, m_szModelName, nullptr);// , m_lhcoords);
-		}
-		else
-		{
-			swprintf_s(m_szError, L"Unknown file type %ls", ext);
-			m_model.reset();
-			*m_szStatus = 0;
-		}
-	}
-	catch(...)
-	{
-		swprintf_s(m_szError, L"Error loading model %ls%ls\n", fname, ext);
-		m_model.reset();
-		*m_szStatus = 0;
-	}
-
-	m_wireframe = false;
-
-	if (m_model)
-	{
-		size_t nmeshes = 0;
-		size_t nverts = 0;
-		size_t nfaces = 0;
-		size_t nsubsets = 0;
-
-		std::set<ID3D11Buffer*> vbs;
-		for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
-		{
-			if ( it == m_model->meshes.cbegin() )
-			{
-				m_ccw = (*it)->ccw;
-			}
-
-			for (auto mit = (*it)->meshParts.cbegin(); mit != (*it)->meshParts.cend(); ++mit)
-			{
-				++nsubsets;
-
-				nfaces += ((*mit)->indexCount / 3);
-
-				ID3D11Buffer* vbptr = (*mit)->vertexBuffer.Get();
-				size_t vertexStride = (*mit)->vertexStride;
-
-				if (vbptr && (vertexStride > 0) && vbs.find(vbptr) == vbs.end())
-				{
-					D3D11_BUFFER_DESC desc;
-					vbptr->GetDesc(&desc);
-
-					nverts += (desc.ByteWidth / vertexStride);
-
-					vbs.insert(vbptr);
-				}
-			}
-			++nmeshes;
-		}
-
-		if (nmeshes > 1)
-		{
-			swprintf_s(m_szStatus, L"Meshes: %6Iu   Verts: %6Iu   Faces: %6Iu   Subsets: %6Iu", nmeshes, nverts, nfaces, nsubsets);
-		}
-		else
-		{
-			swprintf_s(m_szStatus, L"Verts: %6Iu   Faces: %6Iu   Subsets: %6Iu", nverts, nfaces, nsubsets);
-		}
-
-		m_world = Matrix::CreateRotationX(DegreesToRadians(-90.0f));
-	}
-
-	m_camera->CameraHome(m_mouse.get(), m_model.get());
-}
 
 void Game::CycleBackgroundColor()
 {
@@ -1071,77 +835,86 @@ void Game::CycleBackgroundColor()
 	}
 }
 
-
-
-void Game::DrawModel() 
+void Game::RenderHUD()
 {
-	auto context = m_deviceResources->GetD3DDeviceContext();
-	// Draw opaque parts
-	for (auto it = m_model->meshes.cbegin(); it != m_model->meshes.cend(); ++it)
+	if (*main_model->m_szStatus && m_showHud)
 	{
-		auto mesh = it->get();
-		assert(mesh != 0);
+		m_spriteBatch->Begin();
 
-		for (auto pit = mesh->meshParts.cbegin(); pit != mesh->meshParts.cend(); ++pit)
+		Vector3 up = Vector3::TransformNormal(Vector3::Up, m_camera->GetView());
+
+		WCHAR szCamera[256] = { 0 };
+		swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
+			(m_camera->GetLastCameraPos()).x, (m_camera->GetLastCameraPos()).y, (m_camera->GetLastCameraPos()).z,
+			(m_camera->GetCameraFocus()).x, (m_camera->GetCameraFocus()).y, (m_camera->GetCameraFocus()).z,
+			up.x, up.y, up.z, XMConvertToDegrees(m_camera->GetFov()));
+
+		const WCHAR* mode = L"Clockwise";
+		if (m_wireframe)
+			mode = L"Wireframe";
+		else
+			mode = L"Clockwise";
+
+		WCHAR szState[128] = { 0 };
+		swprintf_s(szState, L"%ls", mode);
+
+		WCHAR szSelectHullShader[100] = { 0 };
+		const WCHAR* selectHullShaderText;
+		switch (m_selectHullShader)
 		{
-			auto part = pit->get();
-
-			auto vb = part->vertexBuffer.Get();
-			UINT vbStride = part->vertexStride;
-			UINT vbOffset = 0;
-
-			context->IASetInputLayout(m_vertexInputLayout.Get());
-			context->IASetVertexBuffers(0, 1, &vb, &vbStride, &vbOffset);
-			context->IASetIndexBuffer(part->indexBuffer.Get(), part->indexFormat, 0);
-
-			context->DrawIndexed(part->indexCount, part->startIndex, part->vertexOffset);
+		case 1:
+			selectHullShaderText = L"Partitioning ODD";
+			break;
+		case 2:
+			selectHullShaderText = L"Partitioning EVEN";
+			break;
+		case 3:
+			selectHullShaderText = L"Partitioning Integer";
+			break;
+		case 4:
+			selectHullShaderText = L"Partitioning Pow2";
+			break;
 		}
+		swprintf_s(szSelectHullShader, L"Tessellation Mode: %ls", selectHullShaderText);
+
+		WCHAR szTessellation[100] = { 0 };
+		const WCHAR* tessellationMode = m_tessellation ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
+
+		WCHAR szDisplacement[100] = { 0 };
+		const WCHAR* displacementMode = m_displacementMap ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szDisplacement, L"Displacement Mapping: %ls", displacementMode);
+
+		WCHAR szBacFaceCulling[100] = { 0 };
+		const WCHAR* backFaceCullingMode = m_backFaceCulling ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
+
+
+		WCHAR szTessellationFactor[100] = { 0 };
+		swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessellationFactor);
+
+		WCHAR szDisplacementScale[100] = { 0 };
+		swprintf_s(szDisplacementScale, L"Displacement Scale: %8.4f", m_displacementScale);
+
+		WCHAR szDisplacementBias[100] = { 0 };
+		swprintf_s(szDisplacementBias, L"Displacement Bias: %8.4f", m_displacementBias);
+
+		WCHAR szDistance[100] = { 0 };
+		swprintf_s(szDistance, L"Distance: %8.4f", m_globalDistance);
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), main_model->m_szStatus, XMFLOAT2(0, 10), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
+
+		m_spriteBatch->End();
 	}
 }
-
-float Game::DegreesToRadians(float degrees)
-{
-	return (degrees * M_PI) / 180.0f;
-}
-
-#if defined(_XBOX_ONE) && defined(_TITLE)
-void Game::EnumerateModelFiles()
-{
-	m_selectFile = m_firstFile = 0;
-	m_fileNames.clear();
-
-	WIN32_FIND_DATA ffdata = { 0 };
-
-	static const WCHAR* exts[] = { L"D:\\*.sdkmesh", L"D:\\*.cmo", L"D:\\*.vbo" };
-	
-	for (size_t j = 0; j < _countof(exts); ++j)
-	{
-		HANDLE hFind = FindFirstFileEx( exts[j], FindExInfoStandard, &ffdata, FindExSearchNameMatch, nullptr, 0);
-		if (hFind == INVALID_HANDLE_VALUE)
-		{
-			continue;
-		}
-
-		if ( !(ffdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) )
-		{
-			OutputDebugStringW(ffdata.cFileName);
-			std::wstring fname = ffdata.cFileName;
-
-			m_fileNames.emplace_back(fname);
-		}
-
-		while (FindNextFile(hFind, &ffdata))
-		{
-			if (!(ffdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-			{
-				OutputDebugStringW(ffdata.cFileName);
-				std::wstring fname = ffdata.cFileName;
-
-				m_fileNames.emplace_back(fname);
-			}
-		}
-
-		FindClose(hFind);
-	}
-}
-#endif

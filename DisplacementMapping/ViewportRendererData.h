@@ -1,9 +1,9 @@
 #pragma once
-class ViewportRenderer
+class ViewportRendererData
 {
 public:
-	ViewportRenderer();
-	~ViewportRenderer();
+	ViewportRendererData();
+	~ViewportRendererData();
 	
 
 	D3D11_VIEWPORT										m_viewport;
