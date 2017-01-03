@@ -105,14 +105,18 @@ void Game::Initialize(HWND window, int width, int height)
 #endif
 
 
-	m_viewportLeft = ViewportRendererData();
-	m_viewportRight = ViewportRendererData();
 
 	m_deviceResources->CreateDeviceResources();
 	CreateDeviceDependentResources();
 
+
+	m_viewportLeft = ViewportRendererData(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext());
+	m_viewportRight = ViewportRendererData(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext());
+
+
 	m_deviceResources->CreateWindowSizeDependentResources();
 	CreateWindowSizeDependentResources();
+
 
 
 	main_model = new ModelResources(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext()); 
@@ -556,20 +560,14 @@ void Game::Render()
 			
 			context->OMSetRenderTargets(1, &renderTarget, nullptr);
 
-			RECT firstRect;
-			firstRect.left = static_cast<LONG>(0);
-			firstRect.top = static_cast<LONG>(0);
-			firstRect.right = static_cast<LONG>(1920);
-			firstRect.bottom = static_cast<LONG>(1080);
-
 			m_spriteBatch->Begin();
 			context->RSSetViewports(1, &m_viewportLeft.m_viewport);
-			m_spriteBatch->Draw(m_viewportLeft.m_shaderResourceView.Get(), firstRect);
+			m_spriteBatch->Draw(m_viewportLeft.m_shaderResourceView.Get(), size);
 			m_spriteBatch->End();
 
 			m_spriteBatch->Begin();
 			context->RSSetViewports(1, &m_viewportRight.m_viewport);
-			m_spriteBatch->Draw(m_viewportRight.m_shaderResourceView.Get(), firstRect);
+			m_spriteBatch->Draw(m_viewportRight.m_shaderResourceView.Get(), size);
 			m_spriteBatch->End();
 
 			context->RSSetViewports(1, &viewport);
@@ -766,28 +764,31 @@ void Game::CreateWindowSizeDependentResources()
 	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
-	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportLeft.m_tagetTexture.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportRight.m_tagetTexture.ReleaseAndGetAddressOf()));
+	m_viewportLeft.LoadThings(textureDesc);
+	m_viewportRight.LoadThings(textureDesc);
 
-	D3D11_RENDER_TARGET_VIEW_DESC renderTargetViewDesc;
-	renderTargetViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	renderTargetViewDesc.Texture2D.MipSlice = 0;
+	//DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportLeft.m_tagetTexture.ReleaseAndGetAddressOf()));
+	//DX::ThrowIfFailed(device->CreateTexture2D(&textureDesc, nullptr, m_viewportRight.m_tagetTexture.ReleaseAndGetAddressOf()));
 
-	DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportLeft.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportLeft.m_targetView.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportRight.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportRight.m_targetView.ReleaseAndGetAddressOf()));
+	//D3D11_RENDER_TARGET_VIEW_DESC renderTargetViewDesc;
+	//renderTargetViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	//renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	//renderTargetViewDesc.Texture2D.MipSlice = 0;
 
-	// Create the shader-resource view
-	D3D11_SHADER_RESOURCE_VIEW_DESC srDesc;
-	ZeroMemory(&srDesc, sizeof(srDesc));
+	//DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportLeft.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportLeft.m_targetView.ReleaseAndGetAddressOf()));
+	//DX::ThrowIfFailed(device->CreateRenderTargetView(m_viewportRight.m_tagetTexture.Get(), &renderTargetViewDesc, m_viewportRight.m_targetView.ReleaseAndGetAddressOf()));
 
-	srDesc.Format = textureDesc.Format;
-	srDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	srDesc.Texture2D.MostDetailedMip = 0;
-	srDesc.Texture2D.MipLevels = 1;
+	//// Create the shader-resource view
+	//D3D11_SHADER_RESOURCE_VIEW_DESC srDesc;
+	//ZeroMemory(&srDesc, sizeof(srDesc));
 
-	DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportLeft.m_tagetTexture.Get(), &srDesc, m_viewportLeft.m_shaderResourceView.ReleaseAndGetAddressOf()));
-	DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportRight.m_tagetTexture.Get(), &srDesc, m_viewportRight.m_shaderResourceView.ReleaseAndGetAddressOf()));
+	//srDesc.Format = textureDesc.Format;
+	//srDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	//srDesc.Texture2D.MostDetailedMip = 0;
+	//srDesc.Texture2D.MipLevels = 1;
+
+	//DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportLeft.m_tagetTexture.Get(), &srDesc, m_viewportLeft.m_shaderResourceView.ReleaseAndGetAddressOf()));
+	//DX::ThrowIfFailed(device->CreateShaderResourceView(m_viewportRight.m_tagetTexture.Get(), &srDesc, m_viewportRight.m_shaderResourceView.ReleaseAndGetAddressOf()));
 }
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
