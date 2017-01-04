@@ -391,7 +391,7 @@ void TessellationShaders::Render(Camera& camera, ModelResources& main_model, Vie
 
 	context->DSSetShader(m_domainShader.Get(), nullptr, 0);
 	context->DSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-	context->DSSetShaderResources(0, 1, main_model.m_displacementTexture.GetAddressOf());
+	context->DSSetShaderResources(0, 1, main_model.GetDisplacementTexture().GetAddressOf());
 
 	context->GSSetShader(nullptr, nullptr, 0);
 
@@ -400,11 +400,11 @@ void TessellationShaders::Render(Camera& camera, ModelResources& main_model, Vie
 
 	context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 	context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-	context->PSSetShaderResources(0, 1, main_model.m_diffuseTexture.GetAddressOf());
-	context->PSSetShaderResources(1, 1, main_model.m_normalTexture.GetAddressOf());
-	context->PSSetShaderResources(2, 1, main_model.m_specularTexture.GetAddressOf());
+	context->PSSetShaderResources(0, 1, main_model.GetDiffuseTexture().GetAddressOf());
+	context->PSSetShaderResources(1, 1, main_model.GetNormalTexture().GetAddressOf());
+	context->PSSetShaderResources(2, 1, main_model.GetSpecularTexture().GetAddressOf());
 
-	context->OMSetRenderTargets(1, viewport.m_targetView.GetAddressOf(), depthStencil);
+	context->OMSetRenderTargets(1, viewport.GetTargetView().GetAddressOf(), depthStencil);
 	context->OMSetDepthStencilState(m_states->DepthDefault(), 1);
 
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
@@ -415,7 +415,7 @@ void TessellationShaders::Render(Camera& camera, ModelResources& main_model, Vie
 		context->RSSetState(m_states->Wireframe());
 		context->PSSetShader(m_pixelShaderWireframe.Get(), nullptr, 0);
 		context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
-		context->PSSetShaderResources(0, 1, main_model.m_diffuseTexture.GetAddressOf());
+		context->PSSetShaderResources(0, 1, main_model.GetDiffuseTexture().GetAddressOf());
 		main_model.DrawModel(m_vertexInputLayout.Get());
 	}
 }

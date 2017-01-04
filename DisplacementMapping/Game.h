@@ -56,10 +56,10 @@ public:
 
 	// Properites
 	void GetDefaultSize( int& width, int& height ) const;
+	ModelResources* GetModel() const { return m_model; }
+	void SetModel(ModelResources* val) { m_model = val; }
 
-	ModelResources* main_model;
 private:
-
 	void Update(DX::StepTimer const& timer);
 	void Render();
 	void RenderSplitScreen();
@@ -92,6 +92,7 @@ private:
 	DirectX::Keyboard::KeyboardStateTracker         m_keyboardTracker;
 	DirectX::Mouse::ButtonStateTracker              m_mouseButtonTracker;
 
+	ModelResources*									m_model;
 	Camera*											m_camera;
 	Camera											m_cameraLeft;
 	Camera											m_cameraRight;

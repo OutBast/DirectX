@@ -36,6 +36,7 @@ public:
 
 	float GetFov() const { return m_fov; }
 	void SetFov(float val) { m_fov = val; }
+
 private:
 	DirectX::SimpleMath::Vector3                    m_cameraFocus;
 	DirectX::SimpleMath::Vector3                    m_lastCameraPos;

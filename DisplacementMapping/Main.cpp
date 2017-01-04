@@ -367,7 +367,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				if (GetOpenFileName(&ofn))
 				{
 					s_filterIndex = ofn.nFilterIndex;
-					game->main_model->OnModelOpen(szFile);
+					game->GetModel()->OnModelOpen(szFile);
 				}
 			}
 			else if (lParam == 1 || lParam == 2 || lParam == 3 || lParam == 4)
@@ -390,7 +390,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				if (GetOpenFileName(&ofn))
 				{
 					s_filterIndex = ofn.nFilterIndex;
-					game->main_model->OnTextureOpen(szFile, lParam);
+					game->GetModel()->OnTextureOpen(szFile, lParam);
 				}
 			}
 		}

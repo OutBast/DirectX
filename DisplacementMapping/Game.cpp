@@ -22,48 +22,13 @@ namespace
 	const XMVECTORF32 c_CornflowerBlue = Colors::CornflowerBlue;
 #endif
 }
-//
-//#define MAX_TESSELLATION_DISTANCE 1000.0f
-//#define MAX_TESS_FACTOR 63.0f
-//#define MIN_TESS_FACTOR 1.0f
-//#define TESS_STEP 0.1f;
-//
-//#define MAX_DISP_SCALE 20.0f
-//#define MIN_DISP_SCALE -20.0f
-//#define DISP_SCALE_STEP 0.01f;
-//
-//#define MAX_DISP_BIAS 5.0f
-//#define MIN_DISP_BIAS -5.0f
-//#define DISP_BIAS_STEP 0.01f;
-//
-//// Vertex data for a colored cube.
-//struct VertexPosColor
-//{
-//	XMFLOAT3 Position;
-//	XMFLOAT3 Color;
-//};
-//
-//XMFLOAT4 shaderFactors;
-//float oldTessellationFactor = 1.0f;
-//float oldDisplacementScale = 0.0f;
-//float oldDisplacementBias = 0.0f;
 
 // Constructor.
 Game::Game() :
 	m_showHud(true),
-	//m_wireframe(false),
-	//m_wireframeWithMaterial(true),
-	//m_tessellation(false),
-	//m_displacementMap(false),
-	//m_backFaceCulling(false),
 	m_leftCameraEnable(true),
 	m_selectFile(0),
 	m_firstFile(0),
-	//m_selectHullShader(1),
-	//m_tessellationFactor(1.0f),
-	//m_displacementScale(0.0f),
-	//m_displacementBias(0.0f),
-	//m_globalDistance(0.0f),
 	m_samplerState(nullptr)
 {
 #ifdef GAMMA_CORRECT_RENDERING
@@ -78,9 +43,6 @@ Game::Game() :
 
 	m_clearColor = c_CornflowerBlue.v;
 	m_uiColor = Colors::Black;
-	
-	//shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
-
 	m_cameraLeft = Camera();
 	m_cameraRight = Camera();
 	m_camera = &m_cameraLeft;
@@ -88,39 +50,25 @@ Game::Game() :
 }
 
 // Initialize the Direct3D resources required to run.
-#if defined(_XBOX_ONE) && defined(_TITLE)
-void Game::Initialize(IUnknown* window)
-#else
 void Game::Initialize(HWND window, int width, int height)
-#endif
 {
 	m_keyboard = std::make_unique<Keyboard>();
 	m_mouse = std::make_unique<Mouse>();
 
-#if defined(_XBOX_ONE) && defined(_TITLE)
-	m_deviceResources->SetWindow(window);
-#else
 	m_deviceResources->SetWindow(window, width, height);
 	m_mouse->SetWindow(window);
-#endif
-
-
 
 	m_deviceResources->CreateDeviceResources();
 	CreateDeviceDependentResources();
 
-
 	m_viewportLeft = ViewportRendererData(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext());
 	m_viewportRight = ViewportRendererData(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext());
-
-
+	
 	m_deviceResources->CreateWindowSizeDependentResources();
-	CreateWindowSizeDependentResources();
+	CreateWindowSizeDependentResources();	
 
-
-
-	main_model = new ModelResources(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext()); 
-	main_model->LoadDefaultTextures();
+	m_model = new ModelResources(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext()); 
+	m_model->LoadDefaultTextures();
 
 	m_tessShaders = new TessellationShaders(m_deviceResources->GetD3DDevice(), m_deviceResources->GetD3DDeviceContext());
 	m_tessShaders->LoadAndCompileShaders();
@@ -143,19 +91,19 @@ void Game::Update(DX::StepTimer const& timer)
 {
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
-	main_model->ReloadModelResourcesIfNeeded();
+	m_model->ReloadModelResourcesIfNeeded();
 
 
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
 
 		RECT size = m_deviceResources->GetOutputSize();
-		m_viewportLeft.m_viewport = Viewport(0.0f, 0.0f, size.right / 2.0f, size.bottom);
-		m_viewportRight.m_viewport = Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom);
+		m_viewportLeft.SetViewport(Viewport(0.0f, 0.0f, size.right / 2.0f, size.bottom));
+		m_viewportRight.SetViewport(Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom));
 		
 
 		m_camera->Update(timer, m_keyboard->Get(), m_mouse->Get());
 
-		m_tessShaders->UpdateWorldMatrix(main_model->m_world);
+		m_tessShaders->UpdateWorldMatrix(m_model->GetWorld());
 
 		auto kb = m_keyboard->GetState();
 		m_keyboardTracker.Update(kb);		
@@ -250,13 +198,13 @@ void Game::Render()
 	}
 	else
 	{
-		if (!main_model->m_model)
+		if (!m_model->GetModel())
 		{
 			m_spriteBatch->Begin();
 
-			if (*main_model->m_szError)
+			if (*m_model->m_szError)
 			{
-				m_fontComic->DrawString(m_spriteBatch.get(), main_model->m_szError, XMFLOAT2(100, 100), Colors::Red);
+				m_fontComic->DrawString(m_spriteBatch.get(), m_model->m_szError, XMFLOAT2(100, 100), Colors::Red);
 			}
 			else
 			{
@@ -267,35 +215,125 @@ void Game::Render()
 		}
 		else
 		{
-			auto context = m_deviceResources->GetD3DDeviceContext();
+			m_tessShaders->Render(m_cameraLeft, *m_model, m_viewportLeft, m_deviceResources.get());
+			m_tessShaders->Render(m_cameraRight, *m_model, m_viewportRight, m_deviceResources.get());
 
-			m_tessShaders->Render(m_cameraLeft, *main_model, m_viewportLeft, m_deviceResources.get());
-			m_tessShaders->Render(m_cameraRight, *main_model, m_viewportRight, m_deviceResources.get());
-			
-			context->HSSetShader(nullptr, nullptr, 0);
-			context->DSSetShader(nullptr, nullptr, 0);
-
-			auto renderTarget = m_deviceResources->GetRenderTargetView();
-			context->OMSetRenderTargets(1, &renderTarget, nullptr);
-
-			m_spriteBatch->Begin();
-			context->RSSetViewports(1, &m_viewportLeft.m_viewport);
-			m_spriteBatch->Draw(m_viewportLeft.m_shaderResourceView.Get(), size);
-			m_spriteBatch->End();
-
-			m_spriteBatch->Begin();
-			context->RSSetViewports(1, &m_viewportRight.m_viewport);
-			m_spriteBatch->Draw(m_viewportRight.m_shaderResourceView.Get(), size);
-			m_spriteBatch->End();
-
-			auto viewport = m_deviceResources->GetScreenViewport();
-			context->RSSetViewports(1, &viewport);
+			RenderSplitScreen();
 
 			RenderHUD();
 		}
 	}
 
 	m_deviceResources->Present();
+}
+
+void Game::RenderSplitScreen()
+{
+	auto context = m_deviceResources->GetD3DDeviceContext();
+	RECT size = m_deviceResources->GetOutputSize();
+
+	context->HSSetShader(nullptr, nullptr, 0);
+	context->DSSetShader(nullptr, nullptr, 0);
+
+	auto renderTarget = m_deviceResources->GetRenderTargetView();
+	context->OMSetRenderTargets(1, &renderTarget, nullptr);
+
+	m_spriteBatch->Begin();
+	context->RSSetViewports(1, &m_viewportLeft.GetViewport());
+	m_spriteBatch->Draw(m_viewportLeft.GetShaderResourceView().Get(), size);
+	m_spriteBatch->End();
+
+	m_spriteBatch->Begin();
+	context->RSSetViewports(1, &m_viewportRight.GetViewport());
+	m_spriteBatch->Draw(m_viewportRight.GetShaderResourceView().Get(), size);
+	m_spriteBatch->End();
+
+	auto viewport = m_deviceResources->GetScreenViewport();
+	context->RSSetViewports(1, &viewport);
+}
+
+void Game::RenderHUD()
+{
+	if (*m_model->m_szStatus && m_showHud)
+	{
+		m_spriteBatch->Begin();
+
+		Vector3 up = Vector3::TransformNormal(Vector3::Up, m_camera->GetView());
+
+		WCHAR szCamera[256] = { 0 };
+		swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
+			(m_camera->GetLastCameraPos()).x, (m_camera->GetLastCameraPos()).y, (m_camera->GetLastCameraPos()).z,
+			(m_camera->GetCameraFocus()).x, (m_camera->GetCameraFocus()).y, (m_camera->GetCameraFocus()).z,
+			up.x, up.y, up.z, XMConvertToDegrees(m_camera->GetFov()));
+
+		const WCHAR* mode = L"Clockwise";
+		if (m_tessShaders->GetWireframe())
+			mode = L"Wireframe";
+		else
+			mode = L"Clockwise";
+
+		WCHAR szState[128] = { 0 };
+		swprintf_s(szState, L"%ls", mode);
+
+		WCHAR szSelectHullShader[100] = { 0 };
+		const WCHAR* selectHullShaderText;
+		switch (m_tessShaders->GetSelectHullShader())
+		{
+		case 1:
+			selectHullShaderText = L"Partitioning ODD";
+			break;
+		case 2:
+			selectHullShaderText = L"Partitioning EVEN";
+			break;
+		case 3:
+			selectHullShaderText = L"Partitioning Integer";
+			break;
+		case 4:
+			selectHullShaderText = L"Partitioning Pow2";
+			break;
+		}
+		swprintf_s(szSelectHullShader, L"Tessellation Mode: %ls", selectHullShaderText);
+
+		WCHAR szTessellation[100] = { 0 };
+		const WCHAR* tessellationMode = m_tessShaders->GetTessellation() ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
+
+		WCHAR szDisplacement[100] = { 0 };
+		const WCHAR* displacementMode = m_tessShaders->GetDisplacementMap() ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szDisplacement, L"Displacement Mapping: %ls", displacementMode);
+
+		WCHAR szBacFaceCulling[100] = { 0 };
+		const WCHAR* backFaceCullingMode = m_tessShaders->GetBackFaceCulling() ? L"Turn ON" : L"Turn OFF";
+		swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
+
+
+		WCHAR szTessellationFactor[100] = { 0 };
+		swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessShaders->GetTessellationFactor());
+
+		WCHAR szDisplacementScale[100] = { 0 };
+		swprintf_s(szDisplacementScale, L"Displacement Scale: %8.4f", m_tessShaders->GetDisplacementScale());
+
+		WCHAR szDisplacementBias[100] = { 0 };
+		swprintf_s(szDisplacementBias, L"Displacement Bias: %8.4f", m_tessShaders->GetDisplacementBias());
+
+		WCHAR szDistance[100] = { 0 };
+		swprintf_s(szDistance, L"Distance: %8.4f", m_tessShaders->GetGlobalDistance());
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), m_model->m_szStatus, XMFLOAT2(0, 10), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
+
+		m_spriteBatch->End();
+	}
 }
 
 // Helper method to clear the backbuffers
@@ -307,8 +345,8 @@ void Game::Clear()
 	auto renderTarget = m_deviceResources->GetRenderTargetView();
 	auto depthStencil = m_deviceResources->GetDepthStencilView();
 
-	context->ClearRenderTargetView(m_viewportLeft.m_targetView.Get(), m_clearColor);
-	context->ClearRenderTargetView(m_viewportRight.m_targetView.Get(), m_clearColor);
+	context->ClearRenderTargetView(m_viewportLeft.GetTargetView().Get(), m_clearColor);
+	context->ClearRenderTargetView(m_viewportRight.GetTargetView().Get(), m_clearColor);
 	context->ClearRenderTargetView(renderTarget, m_clearColor);
 	context->ClearDepthStencilView(depthStencil, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
@@ -397,7 +435,7 @@ void Game::OnDeviceLost()
 	m_spriteBatch.reset();
 	m_fontConsolas.reset();
 	m_fontComic.reset();
-	main_model->Reset();
+	m_model->Reset();
 	m_samplerState.Reset();
 	m_tessShaders->Reset();
 }
@@ -408,7 +446,6 @@ void Game::OnDeviceRestored()
 
 	CreateWindowSizeDependentResources();
 }
-#endif
 
 void Game::CycleBackgroundColor()
 {
@@ -429,86 +466,4 @@ void Game::CycleBackgroundColor()
 	}
 }
 
-void Game::RenderHUD()
-{
-	if (*main_model->m_szStatus && m_showHud)
-	{
-		m_spriteBatch->Begin();
-
-		Vector3 up = Vector3::TransformNormal(Vector3::Up, m_camera->GetView());
-
-		WCHAR szCamera[256] = { 0 };
-		swprintf_s(szCamera, L"Camera: (%8.4f,%8.4f,%8.4f) Look At: (%8.4f,%8.4f,%8.4f) Up: (%8.4f,%8.4f,%8.4f) FOV: %8.4f",
-			(m_camera->GetLastCameraPos()).x, (m_camera->GetLastCameraPos()).y, (m_camera->GetLastCameraPos()).z,
-			(m_camera->GetCameraFocus()).x, (m_camera->GetCameraFocus()).y, (m_camera->GetCameraFocus()).z,
-			up.x, up.y, up.z, XMConvertToDegrees(m_camera->GetFov()));
-
-		const WCHAR* mode = L"Clockwise";
-		if (m_tessShaders->m_wireframe)
-			mode = L"Wireframe";
-		else
-			mode = L"Clockwise";
-
-		WCHAR szState[128] = { 0 };
-		swprintf_s(szState, L"%ls", mode);
-
-		WCHAR szSelectHullShader[100] = { 0 };
-		const WCHAR* selectHullShaderText;
-		switch (m_tessShaders->m_selectHullShader)
-		{
-		case 1:
-			selectHullShaderText = L"Partitioning ODD";
-			break;
-		case 2:
-			selectHullShaderText = L"Partitioning EVEN";
-			break;
-		case 3:
-			selectHullShaderText = L"Partitioning Integer";
-			break;
-		case 4:
-			selectHullShaderText = L"Partitioning Pow2";
-			break;
-		}
-		swprintf_s(szSelectHullShader, L"Tessellation Mode: %ls", selectHullShaderText);
-
-		WCHAR szTessellation[100] = { 0 };
-		const WCHAR* tessellationMode = m_tessShaders->m_tessellation ? L"Turn ON" : L"Turn OFF";
-		swprintf_s(szTessellation, L"Tessellation: %ls", tessellationMode);
-
-		WCHAR szDisplacement[100] = { 0 };
-		const WCHAR* displacementMode = m_tessShaders->m_displacementMap ? L"Turn ON" : L"Turn OFF";
-		swprintf_s(szDisplacement, L"Displacement Mapping: %ls", displacementMode);
-
-		WCHAR szBacFaceCulling[100] = { 0 };
-		const WCHAR* backFaceCullingMode = m_tessShaders->m_backFaceCulling ? L"Turn ON" : L"Turn OFF";
-		swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
-
-
-		WCHAR szTessellationFactor[100] = { 0 };
-		swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessShaders->m_tessellationFactor);
-
-		WCHAR szDisplacementScale[100] = { 0 };
-		swprintf_s(szDisplacementScale, L"Displacement Scale: %8.4f", m_tessShaders->m_displacementScale);
-
-		WCHAR szDisplacementBias[100] = { 0 };
-		swprintf_s(szDisplacementBias, L"Displacement Bias: %8.4f", m_tessShaders->m_displacementBias);
-
-		WCHAR szDistance[100] = { 0 };
-		swprintf_s(szDistance, L"Distance: %8.4f", m_tessShaders->m_globalDistance);
-
-		m_fontConsolas->DrawString(m_spriteBatch.get(), main_model->m_szStatus, XMFLOAT2(0, 10), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
-
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
-
-		m_spriteBatch->End();
-	}
-}
+#endif
