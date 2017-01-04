@@ -8,6 +8,7 @@
 #include "Camera.h"
 #include "ViewportRendererData.h"
 #include "ModelResources.h"
+#include "TessellationShaders.h"
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -51,9 +52,7 @@ public:
 	void OnDeactivated();
 	void OnSuspending();
 	void OnResuming();
-	void OnWindowSizeChanged(int width, int height);/*
-	void OnModelOpen(const WCHAR* filename);
-	void OnTextureOpen(const WCHAR* filename, LPARAM lParam);*/
+	void OnWindowSizeChanged(int width, int height);
 
 	// Properites
 	void GetDefaultSize( int& width, int& height ) const;
@@ -79,39 +78,13 @@ private:
 	// Rendering loop timer.
 	DX::StepTimer                                   m_timer;
 
-
 	std::unique_ptr<DirectX::SpriteBatch>           m_spriteBatch;
 	std::unique_ptr<DirectX::SpriteFont>            m_fontConsolas;
 	std::unique_ptr<DirectX::SpriteFont>            m_fontComic;
-	std::unique_ptr<DirectX::CommonStates>          m_states;
 	
 	ViewportRendererData							m_viewportLeft;
 	ViewportRendererData							m_viewportRight;
-
-	// Shaders
-	Microsoft::WRL::ComPtr<ID3D11VertexShader>		m_vertexShader;
-	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShader;
-	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderFE;
-	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderInt;
-	Microsoft::WRL::ComPtr<ID3D11HullShader>		m_hullShaderPow;
-	Microsoft::WRL::ComPtr<ID3D11DomainShader>		m_domainShader;
-	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShader;
-	Microsoft::WRL::ComPtr<ID3D11PixelShader>		m_pixelShaderWireframe;
-
-	// Vertex buffer data
-	Microsoft::WRL::ComPtr<ID3D11InputLayout>		m_vertexInputLayout;
-
-	// Shader resources
-	enum ConstantBuffer
-	{
-		CB_Appliation,
-		CB_Frame,
-		CB_Object,
-		CB_TessellationFactor,
-		NumConstantBuffers
-	};
-	ID3D11Buffer* m_constantBuffers[NumConstantBuffers];
-
+	
 	Microsoft::WRL::ComPtr<ID3D11SamplerState>			m_samplerState;	
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;
@@ -127,21 +100,11 @@ private:
 	DirectX::SimpleMath::Color                      m_uiColor;
 
 	bool                                            m_showHud;
-	bool                                            m_wireframe;
-	bool                                            m_wireframeWithMaterial;
-	bool											m_tessellation;
-	bool											m_displacementMap;
-	bool											m_backFaceCulling;
 	bool											m_leftCameraEnable;
 	
 	int                                             m_selectFile;
 	int                                             m_firstFile;
-	int												m_selectHullShader;
 	std::vector<std::wstring>                       m_fileNames;
-
-	float											m_tessellationFactor;
-	float											m_displacementScale;
-	float											m_displacementBias;
-	float											m_globalDistance;
-
+	
+	TessellationShaders* m_tessShaders;
 };
