@@ -11,7 +11,7 @@ public:
 
 	void Reset();
 	void LoadAndCompileShaders();
-	void Update(DirectX::Keyboard::KeyboardStateTracker& m_keyboardTracker);
+	void Update(DirectX::Keyboard::KeyboardStateTracker& m_keyboardTracker, DirectX::Keyboard::State& m_keyborad);
 	void UpdateGlobalDistance(Camera* camera);
 	void UpdateWorldMatrix(DirectX::SimpleMath::Matrix& m_world);
 	void UpdateTessDisplFactors();
@@ -34,8 +34,6 @@ public:
 	void SetTessellation(bool val) { m_tessellation = val; }
 	bool GetDisplacementMap() const { return m_displacementMap; }
 	void SetDisplacementMap(bool val) { m_displacementMap = val; }
-	bool GetBackFaceCulling() const { return m_backFaceCulling; }
-	void SetBackFaceCulling(bool val) { m_backFaceCulling = val; }
 private:
 	// Shader resources
 	enum ConstantBuffer
@@ -76,6 +74,5 @@ private:
 	bool                                            m_wireframeWithMaterial;
 	bool											m_tessellation;
 	bool											m_displacementMap;
-	bool											m_backFaceCulling;
 };
 

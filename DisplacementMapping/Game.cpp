@@ -101,12 +101,29 @@ void Game::Update(DX::StepTimer const& timer)
 		m_viewportRight.SetViewport(Viewport(size.right / 2.0f, 0.0f, size.right / 2.0f, size.bottom));
 		
 
+		auto kb = m_keyboard->GetState();
+		m_keyboardTracker.Update(kb);
+
 		m_camera->Update(timer, m_keyboard->Get(), m_mouse->Get());
 
-		m_tessShaders->UpdateWorldMatrix(m_model->GetWorld());
+		if (kb.G)
+		{
+			m_model->SetWorld(m_model->GetWorld() * Matrix::CreateScale(1.1f));
+		}
+		if (kb.V)
+		{
+			m_model->SetWorld(m_model->GetWorld() * Matrix::CreateScale(0.9f));
+		}
+		if (kb.H)
+		{
+			m_model->SetWorld(m_model->GetWorld() * Matrix::CreateRotationX(0.8f * timer.GetElapsedSeconds()));
+		}
+		if (kb.B)
+		{
+			m_model->SetWorld(m_model->GetWorld() * Matrix::CreateRotationY(0.8f* timer.GetElapsedSeconds()));
+		}
 
-		auto kb = m_keyboard->GetState();
-		m_keyboardTracker.Update(kb);		
+		m_tessShaders->UpdateWorldMatrix(m_model->GetWorld());
 
 		if (m_keyboardTracker.pressed.Z)
 			m_showHud = !m_showHud;
@@ -152,7 +169,7 @@ void Game::Update(DX::StepTimer const& timer)
 			}
 		}
 
-		m_tessShaders->Update(m_keyboardTracker);
+		m_tessShaders->Update(m_keyboardTracker, kb);
 		m_tessShaders->UpdateGlobalDistance(&m_cameraLeft);
 
 #endif
@@ -301,12 +318,7 @@ void Game::RenderHUD()
 		WCHAR szDisplacement[100] = { 0 };
 		const WCHAR* displacementMode = m_tessShaders->GetDisplacementMap() ? L"Turn ON" : L"Turn OFF";
 		swprintf_s(szDisplacement, L"Displacement Mapping: %ls", displacementMode);
-
-		WCHAR szBacFaceCulling[100] = { 0 };
-		const WCHAR* backFaceCullingMode = m_tessShaders->GetBackFaceCulling() ? L"Turn ON" : L"Turn OFF";
-		swprintf_s(szBacFaceCulling, L"Back Face Culling: %ls", backFaceCullingMode);
-
-
+		
 		WCHAR szTessellationFactor[100] = { 0 };
 		swprintf_s(szTessellationFactor, L"Tessellation Factor: %8.4f", m_tessShaders->GetTessellationFactor());
 
@@ -326,11 +338,23 @@ void Game::RenderHUD()
 		m_fontConsolas->DrawString(m_spriteBatch.get(), szSelectHullShader, XMFLOAT2(0, 10 + 60), m_uiColor);
 		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellation, XMFLOAT2(0, 10 + 80), m_uiColor);
 		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacement, XMFLOAT2(0, 10 + 100), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szBacFaceCulling, XMFLOAT2(0, 10 + 120), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 140), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 160), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 180), m_uiColor);
-		m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 200), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szTessellationFactor, XMFLOAT2(0, 10 + 120), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementScale, XMFLOAT2(0, 10 + 140), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDisplacementBias, XMFLOAT2(0, 10 + 160), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szDistance, XMFLOAT2(0, 10 + 180), m_uiColor);
+
+		RECT size = m_deviceResources->GetOutputSize();
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Change Camera - TAB", XMFLOAT2(0, size.bottom - 180), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Turn Hardware Tessellation ON/OFF - F1", XMFLOAT2(0, size.bottom - 160), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Change tessellation type - 1, 2, 3, 4", XMFLOAT2(0, size.bottom - 140), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Turn Displacement Mapping ON/OFF - F2", XMFLOAT2(0, size.bottom - 120), m_uiColor);
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Modify displacement scale - J, N", XMFLOAT2(0, size.bottom - 100), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Modify displacement bias - K, m", XMFLOAT2(0, size.bottom - 80), m_uiColor);
+
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Draw Grid on mode - F", XMFLOAT2(0, size.bottom - 60), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), L"Draw Material - R", XMFLOAT2(0, size.bottom - 40), m_uiColor);
 
 		m_spriteBatch->End();
 	}

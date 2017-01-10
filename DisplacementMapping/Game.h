@@ -85,7 +85,7 @@ private:
 	ViewportRendererData							m_viewportLeft;
 	ViewportRendererData							m_viewportRight;
 	
-	Microsoft::WRL::ComPtr<ID3D11SamplerState>			m_samplerState;	
+	Microsoft::WRL::ComPtr<ID3D11SamplerState>		m_samplerState;	
 	std::unique_ptr<DirectX::Keyboard>              m_keyboard;
 	std::unique_ptr<DirectX::Mouse>                 m_mouse;
 

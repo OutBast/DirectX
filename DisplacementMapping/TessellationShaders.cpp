@@ -39,7 +39,6 @@ TessellationShaders::TessellationShaders(ID3D11Device* device, ID3D11DeviceConte
 	m_wireframeWithMaterial(true),
 	m_tessellation(false),
 	m_displacementMap(false),
-	m_backFaceCulling(false),
 	m_samplerState(nullptr)
 {
 	shaderFactors = XMFLOAT4(1.0f, 0.0f, 0.0f, 0.0f);
@@ -144,8 +143,9 @@ void TessellationShaders::LoadAndCompileShaders()
 		nullptr, m_pixelShaderWireframe.ReleaseAndGetAddressOf()));
 }
 
-void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyboardTracker)
+void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyboardTracker, DirectX::Keyboard::State& m_keyboard)
 {
+
 	if (m_keyboardTracker.pressed.R)
 		m_wireframe = !m_wireframe;
 
@@ -200,41 +200,36 @@ void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyb
 		}
 	}
 
-	if (m_keyboardTracker.pressed.F3)
-	{
-		m_backFaceCulling = !m_backFaceCulling;
-	}
+	//if (m_tessellation)
+	//{
+	//	if (m_keyboard.H)
+	//	{
+	//		if (m_tessellationFactor < MAX_TESS_FACTOR)
+	//		{
+	//			m_tessellationFactor += TESS_STEP;
+	//		}
+	//		else
+	//		{
+	//			m_tessellationFactor = MAX_TESS_FACTOR;
+	//		}
+	//	}
 
-	if (m_tessellation)
-	{
-		if (m_keyboardTracker.pressed.H)
-		{
-			if (m_tessellationFactor < MAX_TESS_FACTOR)
-			{
-				m_tessellationFactor += TESS_STEP;
-			}
-			else
-			{
-				m_tessellationFactor = MAX_TESS_FACTOR;
-			}
-		}
-
-		if (m_keyboardTracker.pressed.B)
-		{
-			if (m_tessellationFactor > MIN_TESS_FACTOR)
-			{
-				m_tessellationFactor -= TESS_STEP;
-			}
-			else
-			{
-				m_tessellationFactor = MIN_TESS_FACTOR;
-			}
-		}
-	}
+	//	if (m_keyboard.B)
+	//	{
+	//		if (m_tessellationFactor > MIN_TESS_FACTOR)
+	//		{
+	//			m_tessellationFactor -= TESS_STEP;
+	//		}
+	//		else
+	//		{
+	//			m_tessellationFactor = MIN_TESS_FACTOR;
+	//		}
+	//	}
+	//}
 
 	if (m_displacementMap)
 	{
-		if (m_keyboardTracker.pressed.J)
+		if (m_keyboard.J)
 		{
 			if (m_displacementScale < MAX_DISP_SCALE)
 			{
@@ -246,7 +241,7 @@ void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyb
 			}
 		}
 
-		if (m_keyboardTracker.pressed.N)
+		if (m_keyboard.N)
 		{
 			if (m_displacementScale > MIN_DISP_SCALE)
 			{
@@ -258,7 +253,7 @@ void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyb
 			}
 		}
 
-		if (m_keyboardTracker.pressed.K)
+		if (m_keyboard.K)
 		{
 			if (m_displacementBias < MAX_DISP_BIAS)
 			{
@@ -270,7 +265,7 @@ void TessellationShaders::Update(DirectX::Keyboard::KeyboardStateTracker& m_keyb
 			}
 		}
 
-		if (m_keyboardTracker.pressed.M)
+		if (m_keyboard.M)
 		{
 			if (m_displacementBias > MIN_DISP_BIAS)
 			{
