@@ -40,18 +40,17 @@ Game::Game() :
 #if !defined(_XBOX_ONE) || !defined(_TITLE)
 	m_deviceResources->RegisterDeviceNotify(this);
 #endif
+}
 
+// Initialize the Direct3D resources required to run.
+void Game::Initialize(HWND window, int width, int height)
+{
 	m_clearColor = c_CornflowerBlue.v;
 	m_uiColor = Colors::Black;
 	m_cameraLeft = Camera();
 	m_cameraRight = Camera();
 	m_camera = &m_cameraLeft;
 
-}
-
-// Initialize the Direct3D resources required to run.
-void Game::Initialize(HWND window, int width, int height)
-{
 	m_keyboard = std::make_unique<Keyboard>();
 	m_mouse = std::make_unique<Mouse>();
 
@@ -89,6 +88,7 @@ void Game::Tick()
 // Updates the world
 void Game::Update(DX::StepTimer const& timer)
 {
+	m_fpsCounter = timer.GetFramesPerSecond();
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
 	m_model->ReloadModelResourcesIfNeeded();
@@ -331,7 +331,11 @@ void Game::RenderHUD()
 		WCHAR szDistance[100] = { 0 };
 		swprintf_s(szDistance, L"Distance: %8.4f", m_tessShaders->GetGlobalDistance());
 
-		m_fontConsolas->DrawString(m_spriteBatch.get(), m_model->m_szStatus, XMFLOAT2(0, 10), m_uiColor);
+		WCHAR szFps[100] = { 0 };
+		swprintf_s(szFps, L"Frames Per Second: %d", m_fpsCounter);
+
+		//m_fontConsolas->DrawString(m_spriteBatch.get(), m_model->m_szStatus, XMFLOAT2(0, 10), m_uiColor);
+		m_fontConsolas->DrawString(m_spriteBatch.get(), szFps, XMFLOAT2(0, 10), m_uiColor);
 		m_fontConsolas->DrawString(m_spriteBatch.get(), szCamera, XMFLOAT2(0, 10 + 20), m_uiColor);
 		m_fontConsolas->DrawString(m_spriteBatch.get(), szState, XMFLOAT2(0, 10 + 40), m_uiColor);
 

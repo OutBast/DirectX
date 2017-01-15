@@ -105,6 +105,7 @@ private:
 	
 	int                                             m_selectFile;
 	int                                             m_firstFile;
+	int												m_fpsCounter;
 	std::vector<std::wstring>                       m_fileNames;
 	
 	TessellationShaders* m_tessShaders;
