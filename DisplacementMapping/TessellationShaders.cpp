@@ -283,6 +283,14 @@ void TessellationShaders::UpdateGlobalDistance(Camera* camera)
 {
 
 	m_globalDistance = SimpleMath::Vector3::Distance(camera->GetLastCameraPos(), Vector3(0.0f, 0.0f, 0.0f));
+	
+	CalculateTessellationFactor();
+
+	UpdateTessDisplFactors();
+}
+
+void TessellationShaders::CalculateTessellationFactor()
+{
 	if (m_tessellation)
 	{
 		float distanceFactorToTess = m_globalDistance / MAX_TESSELLATION_DISTANCE;
@@ -298,8 +306,6 @@ void TessellationShaders::UpdateGlobalDistance(Camera* camera)
 	{
 		m_tessellationFactor = MIN_TESS_FACTOR;
 	}
-
-	UpdateTessDisplFactors();
 }
 
 void TessellationShaders::UpdateWorldMatrix(DirectX::SimpleMath::Matrix& m_world)
@@ -338,13 +344,6 @@ WCHAR TessellationShaders::GetWhichHullShaderIsEnabled()
 
 void TessellationShaders::Render(Camera& camera, ModelResources& main_model, ViewportRendererData& viewport, DX::DeviceResources* deviceResource)
 {
-	// Set sampler state.
-	//ID3D11SamplerState* samplers[] =
-	//{
-	//	m_states->LinearWrap(),
-	//	m_states->LinearWrap(),
-	//};
-
 	// Set Rasterizer State
 	if (m_wireframe)
 		context->RSSetState(m_states->Wireframe());

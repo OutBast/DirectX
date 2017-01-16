@@ -13,6 +13,7 @@ public:
 	void LoadAndCompileShaders();
 	void Update(DirectX::Keyboard::KeyboardStateTracker& m_keyboardTracker, DirectX::Keyboard::State& m_keyborad);
 	void UpdateGlobalDistance(Camera* camera);
+	void CalculateTessellationFactor();
 	void UpdateWorldMatrix(DirectX::SimpleMath::Matrix& m_world);
 	void UpdateTessDisplFactors();
 	WCHAR GetWhichHullShaderIsEnabled();

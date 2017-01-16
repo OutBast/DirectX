@@ -7,11 +7,10 @@ HS_CONSTANT_DATA_OUTPUT CalcHSPatchConstants(
 {
 	HS_CONSTANT_DATA_OUTPUT Output;
 
-	// Insert code to compute Output here
 	Output.EdgeTessFactor[0] = factors.x;
 	Output.EdgeTessFactor[1] = factors.x;
 	Output.EdgeTessFactor[2] = factors.x;
-	Output.InsideTessFactor = factors.x; // e.g. could calculate dynamic tessellation factors instead
+	Output.InsideTessFactor = factors.x;
 
 	return Output;
 }
@@ -21,7 +20,6 @@ HS_CONSTANT_DATA_OUTPUT CalcHSPatchConstants(
 [outputtopology("triangle_cw")]
 [outputcontrolpoints(3)]
 [patchconstantfunc("CalcHSPatchConstants")]
-//[maxtessfactor(14.0)]
 HS_CONTROL_POINT_OUTPUT main(
 	InputPatch<VS_CONTROL_POINT_OUTPUT, NUM_CONTROL_POINTS> ip,
 	uint i : SV_OutputControlPointID,
@@ -29,7 +27,6 @@ HS_CONTROL_POINT_OUTPUT main(
 {
 	HS_CONTROL_POINT_OUTPUT Output;
 
-	// Insert code to compute Output here
 	Output.worldPosition = ip[i].worldPosition;
 	Output.TextureCoord = ip[i].TextureCoord;
 	Output.normal = ip[i].normal;

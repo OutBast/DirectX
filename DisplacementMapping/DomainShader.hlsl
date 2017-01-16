@@ -11,10 +11,6 @@ DS_OUTPUT main(
 {
 	DS_OUTPUT Output;
 
-	//Output.position = float4(
-	//	patch[0].position*domain.x+patch[1].position*domain.y+patch[2].position*domain.z,1);
-
-	//Output.position = 
 	float3 vWorldPos =
 		domain.x * patch[0].worldPosition +
 		domain.y * patch[1].worldPosition +
@@ -44,12 +40,6 @@ DS_OUTPUT main(
 	Output.worldPosition = vWorldPos;
 
 	Output.position = mul(mvp, float4(vWorldPos, 1.0));
-	//Output.position = float4(vWorldPos, 1.0f);
-/*
-	Output.position =
-		domain.x * patch[0].position +
-		domain.y * patch[1].position +
-		domain.z * patch[2].position;*/
 
 	return Output;
 }
